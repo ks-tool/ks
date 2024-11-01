@@ -32,6 +32,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
 	"github.com/yandex-cloud/go-sdk/operation"
+	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 
 	"github.com/mitchellh/go-homedir"
 	"golang.org/x/crypto/ssh"
@@ -89,7 +90,7 @@ func (f Filter) String() string {
 
 type ComputeInstanceConfig struct {
 	Name       string `mapstructure:"name"`
-	PlatformID string `mapstructure:"platform-id"`
+	PlatformID string `mapstructure:"platform"`
 
 	FolderID string `mapstructure:"folder-id"`
 	SubnetID string `mapstructure:"subnet-id"`
@@ -101,7 +102,7 @@ type ComputeInstanceConfig struct {
 	Memory       uint `mapstructure:"memory"`
 
 	DiskType string `mapstructure:"disk-type"`
-	DiskID   string `mapstructure:"disk-id"`
+	ImageID  string `mapstructure:"image-id"`
 	DiskSize uint   `mapstructure:"disk-size"`
 
 	Preemptible    bool   `mapstructure:"preemptible"`
@@ -110,7 +111,7 @@ type ComputeInstanceConfig struct {
 
 	UserDataFile      string   `mapstructure:"user-data-file"`
 	User              string   `mapstructure:"user"`
-	SshPublicKeyFiles []string `mapstructure:"ssh-pub"`
+	SshPublicKeyFiles []string `mapstructure:"ssh-key"`
 	Shell             string   `mapstructure:"shell"`
 
 	ClusterID         string
@@ -243,7 +244,7 @@ func (c *Client) ComputeInstanceCreate(ctx context.Context, cfg *ComputeInstance
 		TypeId: cfg.DiskType,
 		Size:   utils.ToGib(cfg.DiskSize),
 		Source: &compute.AttachedDiskSpec_DiskSpec_ImageId{
-			ImageId: cfg.DiskID,
+			ImageId: cfg.ImageID,
 		},
 	}
 	if len(diskSpec.TypeId) == 0 {
@@ -253,7 +254,7 @@ func (c *Client) ComputeInstanceCreate(ctx context.Context, cfg *ComputeInstance
 		diskSpec.Size = DefaultDiskSizeGib * utils.Gib
 	}
 	if len(diskSpec.GetImageId()) == 0 {
-		diskSpec.SetImageId(DefaultDiskID)
+		diskSpec.SetImageId(DefaultImageID)
 	}
 
 	networkSpec := &compute.NetworkInterfaceSpec{
@@ -327,7 +328,6 @@ func (c *Client) ComputeInstanceList(
 
 	op := &compute.ListInstancesRequest{
 		FolderId: folderID,
-		PageSize: 1000,
 	}
 
 	var filter []string
@@ -336,16 +336,17 @@ func (c *Client) ComputeInstanceList(
 	}
 	op.Filter = strings.Join(filter, " AND ")
 
-	lst, err := c.sdk.Compute().Instance().List(cctx, op)
-	if err != nil {
-		return nil, err
-	}
-
 	var out []*compute.Instance
-	for _, item := range lst.Instances {
+	iter := c.sdk.Compute().Instance().InstanceIterator(cctx, op)
+	for iter.Next() {
+		item := iter.Value()
 		if utils.AllInMap(item.Labels, lbl) {
 			out = append(out, item)
 		}
+	}
+
+	if err := iter.Error(); err != nil {
+		return nil, err
 	}
 
 	return out, nil
@@ -381,4 +382,24 @@ func (c *Client) ComputeInstanceGroupDelete(ctx context.Context, id string) (*op
 
 	op := &instancegroup.DeleteInstanceGroupRequest{InstanceGroupId: id}
 	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Delete(cctx, op))
+}
+
+func (c *Client) ComputeImageGetId(ctx context.Context, folderId, name string) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	iter := c.sdk.Compute().Image().ImageIterator(cctx, &compute.ListImagesRequest{FolderId: folderId})
+
+	for iter.Next() {
+		image := iter.Value()
+		if image.Name == name {
+			return image.Id, nil
+		}
+	}
+
+	if err := iter.Error(); err != nil {
+		return "", err
+	}
+
+	return "", sdkresolvers.NewErrNotFound(fmt.Sprintf("image %q not found", name))
 }

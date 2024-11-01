@@ -21,36 +21,30 @@ import (
 	"fmt"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
-	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 )
 
-func (c *Client) FirstSubnetInZone(ctx context.Context, folderID string, zone string) (string, error) {
+func (c *Client) FirstSubnetInZone(ctx context.Context, folderID string, zoneId string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	resp, err := c.sdk.VPC().Subnet().List(cctx, &vpc.ListSubnetsRequest{
+	iter := c.sdk.VPC().Subnet().SubnetIterator(cctx, &vpc.ListSubnetsRequest{
 		FolderId: folderID,
-		PageSize: sdkresolvers.DefaultResolverPageSize,
 	})
-	if err != nil {
+
+	for iter.Next() {
+		subnet := iter.Value()
+		if subnet.ZoneId == zoneId {
+			return subnet.Id, nil
+		}
+	}
+
+	if err := iter.Error(); err != nil {
 		return "", err
 	}
 
-	if len(resp.Subnets) == 0 {
-		return "", fmt.Errorf("no subnet in zone %q", zone)
-	}
+	//if len(resp.Subnets) == 0 {
+	//	return "", fmt.Errorf("no subnet in zone %q", zoneId)
+	//}
 
-	subnetID := ""
-	for _, subnet := range resp.Subnets {
-		if subnet.ZoneId != zone {
-			continue
-		}
-		subnetID = subnet.Id
-		break
-	}
-	if subnetID == "" {
-		return "", fmt.Errorf("subnet not found")
-	}
-
-	return subnetID, err
+	return "", fmt.Errorf("subnet not found in zone %q", zoneId)
 }

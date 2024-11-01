@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cmd
+package app
 
 import (
 	"os"
@@ -42,8 +42,8 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringP("config", "c", "config", "config file (search in $HOME/.ks)")
-	rootCmd.PersistentFlags().Bool("debug", false, "")
+	rootCmd.PersistentFlags().StringP("config", "c", "config", "config file (search in $HOME/.ks directory)")
+	rootCmd.PersistentFlags().Bool("debug", false, "enable debug mode")
 
 	_ = viper.BindPFlags(rootCmd.PersistentFlags())
 }

@@ -29,19 +29,15 @@ func FPrintComputeList(w io.Writer, lst []*compute.Instance) {
 	tbl.AppendHeader(table.Row{"ID", "Name", "IP", "Status", "Zone", "SubnetID", "Platform"})
 
 	for _, item := range lst {
-		name := item.Name
-		if len(name) == 0 {
-			name = item.Id
-		}
-
 		tbl.AppendRow(table.Row{
 			item.Id,
-			name,
+			item.Name,
 			GetIPv4(item).External(),
 			item.Status.String(),
 			item.ZoneId,
 			item.NetworkInterfaces[0].SubnetId,
-			item.PlatformId})
+			item.PlatformId,
+		})
 	}
 
 	tbl.Render()
@@ -53,19 +49,15 @@ func FPrintClusterGet(w io.Writer, lst []*compute.Instance) {
 	tbl.AppendHeader(table.Row{"ComputeID", "Name", "IP", "Status", "Zone", "SubnetID", "Platform"})
 
 	for _, item := range lst {
-		name := item.Name
-		if len(name) == 0 {
-			name = item.Id
-		}
-
 		tbl.AppendRow(table.Row{
 			item.Id,
-			name,
+			item.Name,
 			item.NetworkInterfaces[0].PrimaryV4Address.OneToOneNat.Address,
 			item.Status.String(),
 			item.ZoneId,
 			item.NetworkInterfaces[0].SubnetId,
-			item.PlatformId})
+			item.PlatformId,
+		})
 	}
 
 	tbl.Render()

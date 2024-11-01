@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package yc
+package app
 
 import (
 	"context"
@@ -31,25 +31,30 @@ import (
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
-// Compute represents the compute command
-func Compute() *cobra.Command {
-	cmd := &cobra.Command{
-		Aliases: []string{"vm"},
-		Use:     "compute",
-		Short:   "A brief description of your command",
-	}
+// ycComputeCmd represents the compute command
+var ycComputeCmd = &cobra.Command{
+	Aliases: []string{"vm"},
+	Use:     "compute",
+	Short:   "Manage Compute Cloud",
+}
+
+func init() {
+	ycCmd.AddCommand(ycComputeCmd)
 
 	computeCreateFlags(vmCreate)
+	userdataFlags(vmCreate)
 	noWait(vmDelete)
 	noWait(vmStart)
 	noWait(vmStop)
 	vmListFlags(vmList)
 	vmUserDataShowFlags(vmUserDataShow)
+	userdataFlags(vmUserDataShow)
 
-	cmd.AddCommand(
+	ycComputeCmd.AddCommand(
 		vmCreate,
 		vmDelete,
 		vmList,
@@ -57,8 +62,6 @@ func Compute() *cobra.Command {
 		vmStop,
 		vmUserDataShow,
 	)
-
-	return cmd
 }
 
 var vmCreate = &cobra.Command{
@@ -66,6 +69,11 @@ var vmCreate = &cobra.Command{
 	Short: "Create a compute instance",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		_ = viper.BindPFlags(cmd.Flags())
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if _, ok := f.Annotations[cobra.BashCompOneRequiredFlag]; ok && viper.IsSet(f.Name) {
+				_ = cmd.Flags().Set(f.Name, viper.GetString(f.Name))
+			}
+		})
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var config *yc.ComputeInstanceConfig
@@ -74,6 +82,19 @@ var vmCreate = &cobra.Command{
 		}
 
 		config.Labels = checkLabels(config.Labels)
+
+		//resolve image-id
+		client, err := yc.NewClient(viper.GetString("token"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		imageId, _ := client.ComputeImageGetId(cmd.Context(), "standard-images", config.ImageID)
+		if len(imageId) == 0 {
+			imageId, _ = client.ComputeImageGetId(cmd.Context(), config.FolderID, config.ImageID)
+		}
+		if len(imageId) > 0 {
+			config.ImageID = imageId
+		}
 
 		var tpl string
 		if len(config.UserDataFile) > 0 {
@@ -90,11 +111,6 @@ var vmCreate = &cobra.Command{
 		}
 
 		if err := config.SetUserData(tpl); err != nil {
-			log.Fatal(err)
-		}
-
-		client, err := yc.NewClient(viper.GetString("token"))
-		if err != nil {
 			log.Fatal(err)
 		}
 
@@ -126,7 +142,12 @@ var vmCreate = &cobra.Command{
 		instance := resp.(*compute.Instance)
 		ip := yc.GetIPv4(instance).External()
 
-		log.Infof("The compute instance %s (%s) created", instance.Name, ip)
+		name := instance.Name
+		if len(name) == 0 {
+			name = instance.Id
+		}
+
+		log.Infof("The compute instance %q (%s) created", name, ip)
 	},
 }
 
@@ -134,10 +155,7 @@ var vmDelete = &cobra.Command{
 	Aliases: []string{"rm", "del"},
 	Use:     "delete <instance-id>",
 	Short:   "Delete a compute instance",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		_ = viper.BindPFlags(cmd.Flags())
-	},
-	PreRunE: cobra.ExactArgs(1),
+	PreRunE: exactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Infof("The compute instance %s will be deleted", args[0])
 		client, err := yc.NewClient(viper.GetString("token"))
@@ -154,7 +172,6 @@ var vmDelete = &cobra.Command{
 		}
 
 		if viper.GetBool("no-wait") {
-			log.Info("The compute instance will be deleted async ...")
 			return
 		}
 
@@ -211,12 +228,9 @@ var vmList = &cobra.Command{
 }
 
 var vmStart = &cobra.Command{
-	Use:   "start <instance-id>",
-	Short: "Start a compute instance",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		_ = viper.BindPFlags(cmd.Flags())
-	},
-	PreRunE: cobra.ExactArgs(1),
+	Use:     "start <instance-id>",
+	Short:   "Start a compute instance",
+	PreRunE: exactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := yc.NewClient(viper.GetString("token"))
 		if err != nil {
@@ -232,7 +246,6 @@ var vmStart = &cobra.Command{
 		}
 
 		if viper.GetBool("no-wait") {
-			log.Info("The compute instance will be deleted async ...")
 			return
 		}
 
@@ -253,12 +266,9 @@ var vmStart = &cobra.Command{
 }
 
 var vmStop = &cobra.Command{
-	Use:   "stop <instance-id>",
-	Short: "Stop a compute instance",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		_ = viper.BindPFlags(cmd.Flags())
-	},
-	PreRunE: cobra.ExactArgs(1),
+	Use:     "stop <instance-id>",
+	Short:   "Stop a compute instance",
+	PreRunE: exactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		client, err := yc.NewClient(viper.GetString("token"))
 		if err != nil {
@@ -274,7 +284,6 @@ var vmStop = &cobra.Command{
 		}
 
 		if viper.GetBool("no-wait") {
-			log.Info("The compute instance will be deleted async ...")
 			return
 		}
 
@@ -331,31 +340,31 @@ var vmUserDataShow = &cobra.Command{
 }
 
 func computeCreateFlags(cmd *cobra.Command) {
-	cmd.Flags().String("name", "", "")
-	cmd.Flags().String("platform-id", yc.DefaultPlatformID, "")
-	cmd.Flags().String("address", "", "")
-	cmd.Flags().Int64("cores", yc.DefaultCores, "")
-	cmd.Flags().Int64("core-fraction", yc.DefaultCoreFraction, "")
-	cmd.Flags().Int64("memory", yc.DefaultMemoryGib, "")
-	cmd.Flags().String("disk-type", yc.DefaultDiskType, "")
-	cmd.Flags().String("disk-id", yc.DefaultDiskID, "set boot disk id")
-	cmd.Flags().Int64("disk-size", yc.DefaultDiskSizeGib, "")
-	cmd.Flags().Bool("preemptible", true, "")
-	cmd.Flags().Bool("no-public-ip", false, "")
+	cmd.Flags().String("name", "", "a name of the instance")
+	cmd.Flags().String("platform", yc.DefaultPlatformID, "specific platform for the instance")
+	cmd.Flags().String("address", "", "assigns the given internal address to the instance that is created")
+	cmd.Flags().Int64("cores", yc.DefaultCores, "specific number of CPU cores for an instance")
+	cmd.Flags().Int64("core-fraction", yc.DefaultCoreFraction, "specific baseline performance for a core in percent")
+	cmd.Flags().Int64("memory", yc.DefaultMemoryGib, "specific how much memory (in GiB) instance should have")
+	cmd.Flags().String("disk-type", yc.DefaultDiskType, "the type of the disk")
+	cmd.Flags().String("image-id", yc.DefaultImageID, "the source image used to create the disk")
+	cmd.Flags().Int64("disk-size", yc.DefaultDiskSizeGib, "the size of the disk in GiB")
+	cmd.Flags().Bool("preemptible", true, "creates preemptible instance")
+	cmd.Flags().Bool("no-public-ip", false, "not use public IP for instance")
 	cmd.Flags().String("sa", "", "service account name")
-	cmd.Flags().String("user-data-file", "", "")
+}
 
-	cmd.Flags().StringSlice("ssh-pub", nil, "")
-	_ = cmd.MarkFlagRequired("ssh-pub")
-
+func userdataFlags(cmd *cobra.Command) {
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
 	}
-	cmd.Flags().String("user", usr.Username, "")
-	_ = cmd.MarkFlagRequired("user")
 
+	cmd.Flags().String("user", usr.Username, "create user with specific name")
 	cmd.Flags().String("shell", "/bin/bash", "set login shell for user")
+	cmd.Flags().String("user-data-file", "", "custom user-data file")
+	cmd.Flags().StringSlice("ssh-key", nil, "add public SSH key from specified file to authorized_keys")
+	_ = cmd.MarkFlagRequired("ssh-key")
 }
 
 func noWait(cmd *cobra.Command) {
@@ -368,16 +377,7 @@ func vmListFlags(cmd *cobra.Command) {
 }
 
 func vmUserDataShowFlags(cmd *cobra.Command) {
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cmd.Flags().String("user", usr.Username, "")
-	cmd.Flags().StringSlice("ssh-pub", nil, "")
-	cmd.Flags().String("shell", "/bin/bash", "set login shell for user")
-	cmd.Flags().String("user-data-file", "", "")
-	cmd.Flags().Bool("template", false, "show template")
+	cmd.Flags().Bool("template", false, "not render template")
 }
 
 func checkLabels(m map[string]string) map[string]string {
@@ -389,4 +389,15 @@ func checkLabels(m map[string]string) map[string]string {
 	}
 
 	return m
+}
+
+// ExactArgs returns an error if there are not exactly n args.
+func exactArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return fmt.Errorf("accepts %d arg(s), received %d", n, len(args))
+		}
+		_ = viper.BindPFlags(cmd.Flags())
+		return nil
+	}
 }

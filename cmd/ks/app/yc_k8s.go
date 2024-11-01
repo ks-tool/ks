@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package yc
+package app
 
 import (
 	"context"
@@ -30,12 +30,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+var ycK8sCmd = &cobra.Command{
+	Use:   "k8s",
+	Short: "Manage scratch Kubernetes clusters",
+}
+
 // K8s represents the k8s command
-func K8s() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "k8s",
-		Short: "A brief description of your command",
-	}
+func init() {
+	ycCmd.AddCommand(ycK8sCmd)
 
 	computeCreateFlags(clusterCreate)
 	noWait(clusterCreate)
@@ -45,7 +47,7 @@ func K8s() *cobra.Command {
 	clusterScaleFlags(clusterScale)
 	noWait(clusterScale)
 
-	cmd.AddCommand(
+	ycK8sCmd.AddCommand(
 		clusterCreate,
 		clusterDelete,
 		clusterGet,
@@ -54,8 +56,6 @@ func K8s() *cobra.Command {
 		clusterStop,
 		clusterScale,
 	)
-
-	return cmd
 }
 
 var clusterCreate = &cobra.Command{

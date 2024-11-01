@@ -24,11 +24,11 @@ const (
 	KsToolKey = "yc.ks-tool.dev"
 
 	DefaultDiskType          = "network-ssd"
-	DefaultDiskID            = "fd83j4siasgfq4pi1qif" //debian-12-v20240920
+	DefaultImageID           = "debian-12-v20240920"
 	DefaultDiskSizeGib int64 = 10
 
 	DefaultPlatformID = "standard-v3"
-	DefaultZone       = "ru-central1-d"
+	DefaultZone       = "ru-central1-b"
 
 	DefaultCores        int64 = 2
 	DefaultCoreFraction int64 = 100

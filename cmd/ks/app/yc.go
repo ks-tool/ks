@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cmd
+package app
 
 import (
 	"os"
 	"time"
 
-	YC "github.com/ks-tool/ks/internal/yc"
 	"github.com/ks-tool/ks/pkg/yc"
 
 	log "github.com/sirupsen/logrus"
@@ -32,29 +31,21 @@ import (
 // ycCmd represents the yc command
 var ycCmd = &cobra.Command{
 	Use:   "yc",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Manage Yandex Cloud resources",
 }
 
 func init() {
 	rootCmd.AddCommand(ycCmd)
 	cobra.OnInitialize(setTokenFromViper, setAllValueFlagsFromViper(ycCmd))
 
-	ycCmd.AddCommand(YC.Compute(), YC.K8s())
-
-	ycCmd.PersistentFlags().StringP("folder-id", "f", "", "")
+	ycCmd.PersistentFlags().StringP("folder-id", "f", "", "set the ID of the folder to use")
 	_ = ycCmd.MarkPersistentFlagRequired("folder-id")
 
-	ycCmd.PersistentFlags().StringP("subnet-id", "s", "", "")
-	ycCmd.PersistentFlags().StringP("zone", "z", yc.DefaultZone, "")
-	ycCmd.PersistentFlags().DurationP("timeout", "t", 180*time.Second, "")
-	ycCmd.PersistentFlags().StringP("token-file", "k", "", "")
-	ycCmd.PersistentFlags().String("token", "", "Env variable: YC_TOKEN")
+	ycCmd.PersistentFlags().StringP("subnet-id", "s", "", "specific the ID of the subnet")
+	ycCmd.PersistentFlags().StringP("zone", "z", yc.DefaultZone, "zone for creating resources")
+	ycCmd.PersistentFlags().DurationP("timeout", "t", 180*time.Second, "set timeout for operation")
+	ycCmd.PersistentFlags().StringP("token-file", "k", "", "read token from file")
+	ycCmd.PersistentFlags().String("token", "", "set token for Yandex Cloud interact. Can use env variable YC_TOKEN")
 	ycCmd.MarkFlagsMutuallyExclusive("token", "token-file")
 	_ = ycCmd.MarkPersistentFlagRequired("token")
 
