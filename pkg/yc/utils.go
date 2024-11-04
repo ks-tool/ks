@@ -16,13 +16,13 @@ limitations under the License.
 
 package yc
 
-import "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+import computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 
 type ComputeInstanceIPv4 struct {
 	e, i string
 }
 
-func (i ComputeInstanceIPv4) External() string {
+func (i ComputeInstanceIPv4) PublicOrPrivate() string {
 	if len(i.e) == 0 {
 		return i.i
 	}
@@ -30,11 +30,11 @@ func (i ComputeInstanceIPv4) External() string {
 	return i.e
 }
 
-func (i ComputeInstanceIPv4) Internal() string {
+func (i ComputeInstanceIPv4) Private() string {
 	return i.i
 }
 
-func GetIPv4(i *compute.Instance) ComputeInstanceIPv4 {
+func GetIPv4(i *computev1.Instance) ComputeInstanceIPv4 {
 	ipv4 := i.NetworkInterfaces[0].PrimaryV4Address
 	var e string
 	if ipv4.OneToOneNat != nil {

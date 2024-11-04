@@ -16,8 +16,20 @@ limitations under the License.
 
 package common
 
+import (
+	gouser "os/user"
+
+	"github.com/ks-tool/ks/pkg/utils"
+)
+
 const (
 	ManagedKey = "managed"
+	KsToolKey  = "yc.ks-tool.dev"
+
+	DefaultCores        = 2
+	DefaultDiskSizeGib  = 10
+	DefaultCoreFraction = 100
+	DefaultMemoryGib    = 2
 
 	LabelClusterNameKey       = ""
 	LabelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
@@ -28,7 +40,7 @@ users:
   - name: {{ .user }}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: {{ default "/bin/bash" .shell }}
-    {{- with .sshAuthorizedKeys }}
+    {{- with .sshKeys }}
     ssh_authorized_keys:
       {{- range $key := . }}
       - {{ $key }}
@@ -37,3 +49,26 @@ users:
 `
 	UserDataK8sTemplate = UserDataTemplate + ``
 )
+
+func DefaultUserData(user string, keys ...string) (string, error) {
+	usr, err := gouser.Current()
+	if err != nil {
+		return "", err
+	}
+
+	if len(user) == 0 {
+		user = usr.Username
+	}
+
+	if len(keys) == 0 {
+		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return utils.Template(UserDataTemplate, map[string]any{
+		"user":    user,
+		"sshKeys": keys,
+	})
+}

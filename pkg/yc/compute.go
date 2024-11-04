@@ -217,96 +217,11 @@ func (cfg *ComputeInstanceConfig) fillSshKeys() error {
 	return nil
 }
 
-func (c *Client) ComputeInstanceCreate(ctx context.Context, cfg *ComputeInstanceConfig) (*operation.Operation, error) {
-	if len(cfg.Zone) == 0 {
-		cfg.Zone = DefaultZone
-	}
-	if len(cfg.PlatformID) == 0 {
-		cfg.PlatformID = DefaultPlatformID
-	}
+func (c *Client) ComputeInstanceCreate(ctx context.Context, req *compute.CreateInstanceRequest) (*operation.Operation, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 
-	computeResources := &compute.ResourcesSpec{
-		Cores:        int64(cfg.Cores),
-		Memory:       utils.ToGib(cfg.Memory),
-		CoreFraction: int64(cfg.CoreFraction),
-	}
-	if computeResources.Cores == 0 {
-		computeResources.Cores = DefaultCores
-	}
-	if computeResources.Memory == 0 {
-		computeResources.Memory = DefaultMemoryGib * utils.Gib
-	}
-	if computeResources.CoreFraction == 0 {
-		computeResources.CoreFraction = DefaultCoreFraction
-	}
-
-	diskSpec := &compute.AttachedDiskSpec_DiskSpec{
-		TypeId: cfg.DiskType,
-		Size:   utils.ToGib(cfg.DiskSize),
-		Source: &compute.AttachedDiskSpec_DiskSpec_ImageId{
-			ImageId: cfg.ImageID,
-		},
-	}
-	if len(diskSpec.TypeId) == 0 {
-		diskSpec.TypeId = DefaultDiskType
-	}
-	if diskSpec.Size == 0 {
-		diskSpec.Size = DefaultDiskSizeGib * utils.Gib
-	}
-	if len(diskSpec.GetImageId()) == 0 {
-		diskSpec.SetImageId(DefaultImageID)
-	}
-
-	networkSpec := &compute.NetworkInterfaceSpec{
-		SubnetId:             cfg.SubnetID,
-		PrimaryV4AddressSpec: &compute.PrimaryAddressSpec{},
-	}
-	if len(networkSpec.SubnetId) == 0 {
-		subnetId, err := c.FirstSubnetInZone(ctx, cfg.FolderID, cfg.Zone)
-		if err != nil {
-			return nil, err
-		}
-
-		networkSpec.SubnetId = subnetId
-	}
-	if !cfg.NoPublicIP {
-		networkSpec.PrimaryV4AddressSpec.OneToOneNatSpec = &compute.OneToOneNatSpec{
-			IpVersion: compute.IpVersion_IPV4,
-			Address:   cfg.Address,
-		}
-	}
-
-	request := &compute.CreateInstanceRequest{
-		FolderId:      cfg.FolderID,
-		Name:          cfg.Name,
-		Labels:        cfg.Labels,
-		ZoneId:        cfg.Zone,
-		PlatformId:    cfg.PlatformID,
-		ResourcesSpec: computeResources,
-		MetadataOptions: &compute.MetadataOptions{
-			GceHttpEndpoint: 1,
-			GceHttpToken:    1,
-		},
-		Metadata: cfg.Metadata,
-		BootDiskSpec: &compute.AttachedDiskSpec{
-			AutoDelete: true,
-			Disk: &compute.AttachedDiskSpec_DiskSpec_{
-				DiskSpec: diskSpec,
-			},
-		},
-		NetworkInterfaceSpecs: []*compute.NetworkInterfaceSpec{networkSpec},
-		SchedulingPolicy:      &compute.SchedulingPolicy{Preemptible: cfg.Preemptible},
-	}
-
-	if len(cfg.ServiceAccount) > 0 {
-		var err error
-		request.ServiceAccountId, err = c.IAMServiceAccountGetIdByName(ctx, cfg.ServiceAccount)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return c.sdk.WrapOperation(c.sdk.Compute().Instance().Create(ctx, request))
+	return c.sdk.WrapOperation(c.sdk.Compute().Instance().Create(cctx, req))
 }
 
 func (c *Client) ComputeInstanceDelete(ctx context.Context, id string) (*operation.Operation, error) {
@@ -319,15 +234,19 @@ func (c *Client) ComputeInstanceDelete(ctx context.Context, id string) (*operati
 
 func (c *Client) ComputeInstanceList(
 	ctx context.Context,
-	folderID string,
+	folderId string,
 	lbl map[string]string,
 	filters ...Filter,
 ) ([]*compute.Instance, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
+	if len(folderId) == 0 {
+		folderId = c.folderId
+	}
+
 	op := &compute.ListInstancesRequest{
-		FolderId: folderID,
+		FolderId: folderId,
 	}
 
 	var filter []string
@@ -368,7 +287,7 @@ func (c *Client) ComputeInstanceStop(ctx context.Context, id string) (*operation
 	return c.sdk.WrapOperation(c.sdk.Compute().Instance().Stop(cctx, op))
 }
 
-func (c *Client) ComputeInstanceGroupCreate(ctx context.Context, id string) (*operation.Operation, error) {
+func (c *Client) ComputeInstanceGroupCreate(ctx context.Context, name string) (*operation.Operation, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
@@ -384,9 +303,12 @@ func (c *Client) ComputeInstanceGroupDelete(ctx context.Context, id string) (*op
 	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Delete(cctx, op))
 }
 
-func (c *Client) ComputeImageGetId(ctx context.Context, folderId, name string) (string, error) {
+func (c *Client) ComputeImageGetId(ctx context.Context, name, folderId string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
+	if len(folderId) == 0 {
+		folderId = c.folderId
+	}
 
 	iter := c.sdk.Compute().Image().ImageIterator(cctx, &compute.ListImagesRequest{FolderId: folderId})
 

@@ -23,16 +23,37 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 )
 
+var Simple = table.Style{
+	Name: "StyleSimple",
+	Box: table.BoxStyle{
+		PaddingRight:  "   ",
+		UnfinishedRow: " ~",
+	},
+	Color:  table.ColorOptionsDefault,
+	Format: table.FormatOptionsDefault,
+	HTML:   table.DefaultHTMLOptions,
+	Options: table.Options{
+		DrawBorder:      false,
+		SeparateColumns: false,
+		SeparateFooter:  false,
+		SeparateHeader:  false,
+		SeparateRows:    false,
+	},
+	Size:  table.SizeOptionsDefault,
+	Title: table.TitleOptionsDefault,
+}
+
 func FPrintComputeList(w io.Writer, lst []*compute.Instance) {
 	tbl := table.NewWriter()
 	tbl.SetOutputMirror(w)
+	tbl.SetStyle(Simple)
 	tbl.AppendHeader(table.Row{"ID", "Name", "IP", "Status", "Zone", "SubnetID", "Platform"})
 
 	for _, item := range lst {
 		tbl.AppendRow(table.Row{
 			item.Id,
 			item.Name,
-			GetIPv4(item).External(),
+			GetIPv4(item).PublicOrPrivate(),
 			item.Status.String(),
 			item.ZoneId,
 			item.NetworkInterfaces[0].SubnetId,
