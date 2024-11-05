@@ -36,41 +36,41 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 type ComputeInstanceSpec struct {
 	// +optional
-	Platform string `json:"platform,omitempty"`
+	Platform string `json:"platform,omitempty" mapstructure:"platform"`
 	// +optional
-	Preemptible bool `json:"preemptible,omitempty"`
+	Preemptible bool `json:"preemptible,omitempty" mapstructure:"preemptible"`
 	// +optional
-	ServiceAccount string `json:"serviceAccount,omitempty"`
+	ServiceAccount string `json:"serviceAccount,omitempty" mapstructure:"sa"`
 	// +optional
 	UserData string `json:"userData,omitempty"`
 	// +optional
-	Resources ResourcesSpec `json:"resources,omitempty"`
+	Resources ResourcesSpec `json:"resources,omitempty" mapstructure:"resources"`
 	// +optional
-	Disk DiskSpec `json:"disk,omitempty"`
+	Disk DiskSpec `json:"disk,omitempty" mapstructure:"disk"`
 	// +optional
-	Folder string `json:"folder,omitempty"`
+	Folder string `json:"folder,omitempty" mapstructure:"folder"`
 	// +optional
-	Zone string `json:"zone,omitempty"`
+	Zone string `json:"zone,omitempty" mapstructure:"zone"`
 	// +optional
 	NetworkInterfaces []NetworkInterfaceSpec `json:"networkInterfaces"`
 }
 
 type ResourcesSpec struct {
 	// +optional
-	Memory int `json:"memory,omitempty"`
+	Memory int `json:"memory,omitempty" mapstructure:"memory"`
 	// +optional
-	Cpu int `json:"cpu,omitempty"`
+	Cpu int `json:"cpu,omitempty" mapstructure:"cpu"`
 	// +optional
-	CoreFraction int `json:"coreFraction,omitempty"`
+	CoreFraction int `json:"coreFraction,omitempty" mapstructure:"core-fraction"`
 }
 
 type DiskSpec struct {
 	// +optional
-	Size int `json:"size,omitempty"`
+	Size int `json:"size,omitempty" mapstructure:"size"`
 	// +optional
-	Type string `json:"type,omitempty"`
+	Type string `json:"type,omitempty" mapstructure:"type"`
 	// +optional
-	Image string `json:"image,omitempty"`
+	Image string `json:"image,omitempty" mapstructure:"image"`
 }
 
 type NetworkInterfaceSpec struct {

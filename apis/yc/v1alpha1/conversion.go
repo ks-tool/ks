@@ -19,6 +19,8 @@ package v1alpha1
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	"time"
 
 	"github.com/ks-tool/ks/apis/scopes"
@@ -149,6 +151,36 @@ func Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(in *ComputeIns
 		}
 
 		networks = append(networks, networkSpec)
+	}
+
+	if len(networks) == 0 {
+		if err = func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			resp, err := scope.Sdk.VPC().Subnet().List(ctx, &vpc.ListSubnetsRequest{FolderId: folderId})
+			if err != nil {
+				return err
+			}
+
+			for _, subnet := range resp.Subnets {
+				if subnet.ZoneId == spec.Zone {
+					networks = append(networks, &computev1.NetworkInterfaceSpec{
+						SubnetId: subnet.Id,
+						PrimaryV4AddressSpec: &computev1.PrimaryAddressSpec{
+							OneToOneNatSpec: &computev1.OneToOneNatSpec{
+								IpVersion: computev1.IpVersion_IPV4,
+							}},
+					})
+
+					return nil
+				}
+			}
+
+			return fmt.Errorf("no subnet found in zone %s", spec.Zone)
+		}(); err != nil {
+			return err
+		}
 	}
 
 	metadata := in.Annotations

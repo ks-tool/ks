@@ -32,6 +32,7 @@ type ClientConfig func(*Client)
 type Client struct {
 	sdk      *ycsdk.SDK
 	folderId string
+	folder   string
 	cloudId  string
 }
 
@@ -137,6 +138,8 @@ func FolderId(id string) ClientConfig {
 
 func FolderName(name string) ClientConfig {
 	return func(c *Client) {
+		c.folder = name
+
 		if len(c.cloudId) == 0 {
 			func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

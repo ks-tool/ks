@@ -25,15 +25,19 @@ import (
 
 	"github.com/ks-tool/ks/apis/scheme"
 	"github.com/ks-tool/ks/apis/scopes"
+	ycv1alpha1 "github.com/ks-tool/ks/apis/yc/v1alpha1"
 	"github.com/ks-tool/ks/pkg/common"
+	"github.com/ks-tool/ks/pkg/utils"
 	"github.com/ks-tool/ks/pkg/yc"
 
 	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var (
@@ -44,31 +48,59 @@ var (
 	}
 
 	vmCreate = &cobra.Command{
-		Use:   "create",
+		Use:   "create [name]",
 		Short: "Create a compute instance",
 		PreRun: func(cmd *cobra.Command, args []string) {
-			_ = viper.BindPFlags(cmd.Flags())
+			bind(cmd, "platform")
+			bind(cmd, "sa")
+			bind(cmd, "preemptible")
+			bind(cmd, "address")
+			bind(cmd, "cpu", "resources.cpu")
+			bind(cmd, "core-fraction", "resources.core-fraction")
+			bind(cmd, "memory", "resources.memory")
+			bind(cmd, "disk-type", "disk.type")
+			bind(cmd, "disk-image", "disk.image")
+			bind(cmd, "disk-size", "disk.size")
+			bind(cmd, "no-public-ip")
+			bind(cmd, "subnet")
+			bind(cmd, "manifest")
+			bind(cmd, "user")
+			bind(cmd, "shell")
+			bind(cmd, "user-data-file")
+			bind(cmd, "ssh-key")
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			obj, err := scheme.FromFileWithDefaults(viper.GetString("manifest"))
-			if err != nil {
-				log.Fatal(err)
-			}
-
 			var opts []yc.ClientConfig
 			cloudName := viper.GetString("cloud")
-			if len(cloudName) > 0 {
+			if viper.IsSet("cloud") {
 				opts = append(opts, yc.CloudName(cloudName))
 			}
 
 			folderName := viper.GetString("folder")
-			if len(folderName) > 0 {
+			if viper.IsSet("folder") {
 				opts = append(opts, yc.FolderName(folderName))
 			}
 
 			client, err := yc.NewClient(viper.GetString("token"), opts...)
 			if err != nil {
 				log.Fatal(err)
+			}
+
+			var obj runtime.Object
+			if viper.IsSet("manifest") {
+				obj, err = scheme.FromFileWithDefaults(viper.GetString("manifest"))
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				obj, err = computeInstanceFromFlags(client)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			if len(args) > 0 {
+				obj.(*ycv1alpha1.ComputeInstance).Name = args[0]
 			}
 
 			req := &computev1.CreateInstanceRequest{}
@@ -80,10 +112,7 @@ var (
 				log.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), viper.GetDuration("timeout"))
-			defer cancel()
-
-			op, err := client.ComputeInstanceCreate(ctx, req)
+			op, err := client.ComputeInstanceCreate(cmd.Context(), req)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -96,7 +125,7 @@ var (
 			newComputeInstance := meta.(*computev1.CreateInstanceMetadata)
 			log.Infof("Creating compute instance %s ...", newComputeInstance.InstanceId)
 
-			if err = op.Wait(ctx); err != nil {
+			if err = op.Wait(cmd.Context()); err != nil {
 				log.Fatal(err)
 			}
 
@@ -118,11 +147,13 @@ var (
 
 	vmDelete = &cobra.Command{
 		Aliases: []string{"rm", "del"},
-		Use:     "delete <instance-id>",
+		Use:     "delete",
 		Short:   "Delete a compute instance",
-		PreRunE: exactArgs(1),
+		PreRun: func(cmd *cobra.Command, args []string) {
+			_ = viper.BindPFlags(cmd.Flags())
+		},
 		Run: func(cmd *cobra.Command, args []string) {
-			log.Infof("The compute instance %s will be deleted", args[0])
+			log.Infof("The compute instance %s will be deleted ...", args[0])
 
 			var opts []yc.ClientConfig
 			cloudName := viper.GetString("cloud")
@@ -140,10 +171,7 @@ var (
 				log.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), viper.GetDuration("timeout"))
-			defer cancel()
-
-			op, err := client.ComputeInstanceDelete(ctx, args[0])
+			op, err := client.ComputeInstanceDelete(cmd.Context(), args[0])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -152,7 +180,7 @@ var (
 				return
 			}
 
-			if err = op.Wait(ctx); err != nil {
+			if err = op.Wait(cmd.Context()); err != nil {
 				log.Fatal(err)
 			}
 
@@ -184,9 +212,6 @@ var (
 				log.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), viper.GetDuration("timeout"))
-			defer cancel()
-
 			var filters []yc.Filter
 			if viper.IsSet("status") {
 				status := viper.GetString("status")
@@ -204,7 +229,7 @@ var (
 			if !viper.GetBool("all") {
 				lbl = map[string]string{common.ManagedKey: common.KsToolKey}
 			}
-			lst, err := client.ComputeInstanceList(ctx, "", lbl, filters...)
+			lst, err := client.ComputeInstanceList(cmd.Context(), "", lbl, filters...)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -234,10 +259,7 @@ var (
 				log.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), viper.GetDuration("timeout"))
-			defer cancel()
-
-			op, err := client.ComputeInstanceStart(ctx, args[0])
+			op, err := client.ComputeInstanceStart(cmd.Context(), args[0])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -246,7 +268,7 @@ var (
 				return
 			}
 
-			if err = op.Wait(ctx); err != nil {
+			if err = op.Wait(cmd.Context()); err != nil {
 				log.Fatal(err)
 			}
 
@@ -282,10 +304,7 @@ var (
 				log.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), viper.GetDuration("timeout"))
-			defer cancel()
-
-			op, err := client.ComputeInstanceStop(ctx, args[0])
+			op, err := client.ComputeInstanceStop(cmd.Context(), args[0])
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -294,7 +313,7 @@ var (
 				return
 			}
 
-			if err = op.Wait(ctx); err != nil {
+			if err = op.Wait(cmd.Context()); err != nil {
 				log.Fatal(err)
 			}
 
@@ -349,7 +368,8 @@ var (
 
 func init() {
 	computeCreateFlags(vmCreate)
-	//userdataFlags(vmCreate)
+	userdataFlags(vmCreate)
+	deleteFlags(vmDelete)
 	noWait(vmDelete)
 	noWait(vmStart)
 	noWait(vmStop)
@@ -366,24 +386,22 @@ func init() {
 		vmUserDataShow,
 	)
 
-	computeCmd.PersistentFlags().String("zone", "", "zone for creating resources")
+	computeCmd.PersistentFlags().String("zone", ycv1alpha1.DefaultZone, "zone for creating resources")
 }
 
 func computeCreateFlags(cmd *cobra.Command) {
-	//cmd.Flags().String("name", "", "a name of the instance")
-	//cmd.Flags().String("platform", "", "specific platform for the instance")
-	//cmd.Flags().String("address", "", "assigns the given internal address to the instance that is created")
-	//cmd.Flags().Int64("cores", 0, "specific number of CPU cores for an instance")
-	//cmd.Flags().Int64("core-fraction", 0, "specific baseline performance for a core in percent")
-	//cmd.Flags().Int64("memory", 0, "specific how much memory (in GiB) instance should have")
-	//cmd.Flags().String("disk-type", "", "the type of the disk")
-	//cmd.Flags().String("image-id", "", "the source image used to create the disk")
-	//cmd.Flags().Int64("disk-size", 0, "the size of the disk in GiB")
-	//cmd.Flags().Bool("preemptible", true, "creates preemptible instance")
-	//cmd.Flags().Bool("no-public-ip", false, "not use public IP for instance")
-	//cmd.Flags().String("sa", "", "service account name")
-	//cmd.Flags().String("subnet", "", "specific the name of the subnet")
-
+	cmd.Flags().String("platform", "", "specific platform for the instance")
+	cmd.Flags().String("sa", "", "service account name")
+	cmd.Flags().Bool("preemptible", true, "creates preemptible instance")
+	cmd.Flags().String("address", "", "assigns the given internal address to the instance that is created")
+	cmd.Flags().Int64("cpu", 0, "specific number of CPU cores for an instance")
+	cmd.Flags().Int64("core-fraction", 0, "specific baseline performance for a core in percent")
+	cmd.Flags().Int64("memory", 0, "specific how much memory (in GiB) instance should have")
+	cmd.Flags().String("disk-type", "", "the type of the disk")
+	cmd.Flags().String("disk-image", "", "the source image used to create the disk")
+	cmd.Flags().Int64("disk-size", 0, "the size of the disk in GiB")
+	cmd.Flags().Bool("no-public-ip", false, "not use public IP for instance")
+	cmd.Flags().String("subnet", "", "specific the name of the subnet")
 	cmd.Flags().String("manifest", "", "path to manifest file")
 }
 
@@ -397,11 +415,16 @@ func userdataFlags(cmd *cobra.Command) {
 	cmd.Flags().String("shell", "/bin/bash", "set login shell for user")
 	cmd.Flags().String("user-data-file", "", "custom user-data file")
 	cmd.Flags().StringSlice("ssh-key", nil, "add public SSH key from specified file to authorized_keys")
-	//_ = cmd.MarkFlagRequired("ssh-key")
 }
 
 func noWait(cmd *cobra.Command) {
 	cmd.Flags().Bool("no-wait", false, "don't wait for completion")
+}
+
+func deleteFlags(cmd *cobra.Command) {
+	cmd.Flags().String("id", "", "id of compute instance")
+	cmd.Flags().String("name", "", "name of compute instance")
+	cmd.MarkFlagsMutuallyExclusive("id", "name")
 }
 
 func vmListFlags(cmd *cobra.Command) {
@@ -413,6 +436,14 @@ func vmUserDataShowFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("template", false, "not render template")
 }
 
+func bind(cmd *cobra.Command, name string, key ...string) {
+	viperKey := name
+	if len(key) > 0 {
+		viperKey = key[0]
+	}
+	_ = viper.BindPFlag(viperKey, cmd.Flags().Lookup(name))
+}
+
 // exactArgs returns an error if there are not exactly n args.
 func exactArgs(n int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
@@ -422,4 +453,83 @@ func exactArgs(n int) cobra.PositionalArgs {
 		_ = viper.BindPFlags(cmd.Flags())
 		return nil
 	}
+}
+
+func computeInstanceFromFlags(client *yc.Client) (*ycv1alpha1.ComputeInstance, error) {
+	obj := new(ycv1alpha1.ComputeInstance)
+	if err := viper.Unmarshal(&obj.Spec); err != nil {
+		return nil, err
+	}
+
+	userDataTemplate := common.UserDataTemplate
+	if viper.IsSet("user-data-file") {
+		file, err := homedir.Expand(viper.GetString("user-data-file"))
+		if err != nil {
+			return nil, err
+		}
+
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		userDataTemplate = string(data)
+	}
+	usr, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	var keys []string
+	if viper.IsSet("ssh-key") {
+		for _, keyFile := range viper.GetStringSlice("ssh-key") {
+			keyFile, err = homedir.Expand(keyFile)
+			if err != nil {
+				return nil, err
+			}
+			b, err := os.ReadFile(keyFile)
+			if err != nil {
+				return nil, err
+			}
+			keys = append(keys, string(b))
+		}
+	} else {
+		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	obj.Spec.UserData, err = utils.Template(userDataTemplate, map[string]any{
+		"user":    viper.GetString("user"),
+		"sshKeys": keys,
+		"shell":   viper.GetString("shell"),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if viper.IsSet("subnet") {
+		subnet := sdkresolvers.SubnetResolver(viper.GetString("subnet"), sdkresolvers.FolderID(client.FolderId()))
+		if err = subnet.Run(context.Background(), client.SDK()); err != nil {
+			return nil, err
+		}
+		if subnet.Err() != nil {
+			return nil, subnet.Err()
+		}
+
+		netif := ycv1alpha1.NetworkInterfaceSpec{
+			Subnet:    subnet.ID(),
+			PrivateIp: viper.GetString("address"),
+		}
+		if viper.GetBool("no-public-ip") {
+			pub := ""
+			netif.PublicIp = &pub
+		}
+
+		obj.Spec.NetworkInterfaces = append(obj.Spec.NetworkInterfaces, netif)
+	}
+
+	scheme.Defaults(obj)
+
+	return obj, nil
 }

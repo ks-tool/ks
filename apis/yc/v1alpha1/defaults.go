@@ -72,12 +72,4 @@ func SetDefaults_ComputeInstance(obj *ComputeInstance) {
 			panic(err)
 		}
 	}
-
-	if len(obj.Spec.NetworkInterfaces) == 0 {
-		obj.Spec.NetworkInterfaces = []NetworkInterfaceSpec{
-			{
-				Subnet: "default-" + DefaultZone,
-			},
-		}
-	}
 }

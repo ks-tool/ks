@@ -19,7 +19,6 @@ package yc
 import (
 	"os"
 	"strings"
-	"time"
 
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
@@ -58,10 +57,10 @@ func init() {
 
 	YandexCloudCmd.PersistentFlags().String("cloud", "", "set the name of the cloud to use")
 	YandexCloudCmd.PersistentFlags().String("folder", "", "set the name of the folder to use")
-	YandexCloudCmd.PersistentFlags().Duration("timeout", 180*time.Second, "set timeout for operation")
 	YandexCloudCmd.PersistentFlags().String("token-file", "", "read token from file")
 	YandexCloudCmd.PersistentFlags().String("token", "", "set token for Yandex Cloud interact. Can use env variable YC_TOKEN")
 	YandexCloudCmd.MarkFlagsMutuallyExclusive("token", "token-file")
+	_ = viper.BindPFlags(YandexCloudCmd.PersistentFlags())
 
 	_ = YandexCloudCmd.MarkPersistentFlagRequired("token")
 	_ = viper.BindEnv("token", "YC_TOKEN")
