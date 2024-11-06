@@ -16,33 +16,65 @@ limitations under the License.
 
 package yc
 
-import computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+import (
+	"fmt"
+	"strings"
+
+	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+)
 
 type ComputeInstanceIPv4 struct {
-	e, i string
+	e, i []string
 }
 
-func (i ComputeInstanceIPv4) PublicOrPrivate() string {
-	if len(i.e) == 0 {
-		return i.i
+func (i ComputeInstanceIPv4) PublicOrPrivate(inLine bool) string {
+	n := len(i.i)
+	if len(i.e) > n {
+		n = len(i.e)
 	}
 
+	appendStr := func(s string, idx int) string {
+		if n == 1 {
+			return fmt.Sprintf("%s", s)
+		}
+
+		return fmt.Sprintf("%s (%d)", s, idx)
+	}
+
+	out := make([]string, 0)
+	for k := 0; k < n; k++ {
+		if len(i.e) > 0 && k < len(i.e) {
+			out = append(out, appendStr(i.e[k], k))
+		}
+		if k < len(i.i) {
+			out = append(out, appendStr(i.i[k], k))
+		}
+	}
+
+	sep := "\n"
+	if inLine {
+		sep = ", "
+	}
+
+	return strings.Join(out, sep)
+}
+
+func (i ComputeInstanceIPv4) Public() []string {
 	return i.e
 }
 
-func (i ComputeInstanceIPv4) Private() string {
+func (i ComputeInstanceIPv4) Private() []string {
 	return i.i
 }
 
 func GetIPv4(i *computev1.Instance) ComputeInstanceIPv4 {
-	ipv4 := i.NetworkInterfaces[0].PrimaryV4Address
-	var e string
-	if ipv4.OneToOneNat != nil {
-		e = ipv4.OneToOneNat.Address
+	ips := ComputeInstanceIPv4{}
+	for _, netif := range i.NetworkInterfaces {
+		if netif.PrimaryV4Address.OneToOneNat != nil {
+			ips.e = append(ips.e, netif.PrimaryV4Address.OneToOneNat.Address)
+		}
+		ips.i = append(ips.i, netif.PrimaryV4Address.Address)
 	}
 
-	return ComputeInstanceIPv4{
-		e: e,
-		i: ipv4.Address,
-	}
+	return ips
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 )
 
-var Simple = table.Style{
+var StyleK8s = table.Style{
 	Name: "StyleSimple",
 	Box: table.BoxStyle{
 		PaddingRight:  "   ",
@@ -43,17 +43,19 @@ var Simple = table.Style{
 	Title: table.TitleOptionsDefault,
 }
 
-func FPrintComputeList(w io.Writer, lst []*compute.Instance) {
+func FPrintComputeList(w io.Writer, lst []*compute.Instance, noHead bool) {
 	tbl := table.NewWriter()
 	tbl.SetOutputMirror(w)
-	tbl.SetStyle(Simple)
-	tbl.AppendHeader(table.Row{"ID", "Name", "IP", "Status", "Zone", "SubnetID", "Platform"})
+	tbl.SetStyle(StyleK8s)
+	if !noHead {
+		tbl.AppendHeader(table.Row{"ID", "Name", "IP", "Status", "ZoneID", "SubnetID", "Platform"})
+	}
 
 	for _, item := range lst {
 		tbl.AppendRow(table.Row{
 			item.Id,
 			item.Name,
-			GetIPv4(item).PublicOrPrivate(),
+			GetIPv4(item).PublicOrPrivate(false),
 			item.Status.String(),
 			item.ZoneId,
 			item.NetworkInterfaces[0].SubnetId,
@@ -67,13 +69,13 @@ func FPrintComputeList(w io.Writer, lst []*compute.Instance) {
 func FPrintClusterGet(w io.Writer, lst []*compute.Instance) {
 	tbl := table.NewWriter()
 	tbl.SetOutputMirror(w)
-	tbl.AppendHeader(table.Row{"ComputeID", "Name", "IP", "Status", "Zone", "SubnetID", "Platform"})
+	tbl.AppendHeader(table.Row{"ComputeID", "Name", "IP", "Status", "ZoneID", "SubnetID", "Platform"})
 
 	for _, item := range lst {
 		tbl.AppendRow(table.Row{
 			item.Id,
 			item.Name,
-			item.NetworkInterfaces[0].PrimaryV4Address.OneToOneNat.Address,
+			GetIPv4(item).PublicOrPrivate(false),
 			item.Status.String(),
 			item.ZoneId,
 			item.NetworkInterfaces[0].SubnetId,

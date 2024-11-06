@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	"time"
 
 	"github.com/ks-tool/ks/apis/scopes"
@@ -28,6 +27,7 @@ import (
 	"github.com/ks-tool/ks/pkg/utils"
 
 	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 

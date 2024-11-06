@@ -18,7 +18,6 @@ package yc
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/user"
 	"strings"
@@ -31,11 +30,13 @@ import (
 	"github.com/ks-tool/ks/pkg/yc"
 
 	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	"github.com/yandex-cloud/go-sdk/operation"
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -51,37 +52,16 @@ var (
 		Use:   "create [name]",
 		Short: "Create a compute instance",
 		PreRun: func(cmd *cobra.Command, args []string) {
-			bind(cmd, "platform")
-			bind(cmd, "sa")
-			bind(cmd, "preemptible")
-			bind(cmd, "address")
+			_ = viper.BindPFlags(cmd.Flags())
 			bind(cmd, "cpu", "resources.cpu")
 			bind(cmd, "core-fraction", "resources.core-fraction")
 			bind(cmd, "memory", "resources.memory")
 			bind(cmd, "disk-type", "disk.type")
 			bind(cmd, "disk-image", "disk.image")
 			bind(cmd, "disk-size", "disk.size")
-			bind(cmd, "no-public-ip")
-			bind(cmd, "subnet")
-			bind(cmd, "manifest")
-			bind(cmd, "user")
-			bind(cmd, "shell")
-			bind(cmd, "user-data-file")
-			bind(cmd, "ssh-key")
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			var opts []yc.ClientConfig
-			cloudName := viper.GetString("cloud")
-			if viper.IsSet("cloud") {
-				opts = append(opts, yc.CloudName(cloudName))
-			}
-
-			folderName := viper.GetString("folder")
-			if viper.IsSet("folder") {
-				opts = append(opts, yc.FolderName(folderName))
-			}
-
-			client, err := yc.NewClient(viper.GetString("token"), opts...)
+			client, err := newClient()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -141,50 +121,7 @@ var (
 				name = instance.Id
 			}
 
-			log.Infof("The compute instance %q (%s) created", name, yc.GetIPv4(instance).PublicOrPrivate())
-		},
-	}
-
-	vmDelete = &cobra.Command{
-		Aliases: []string{"rm", "del"},
-		Use:     "delete",
-		Short:   "Delete a compute instance",
-		PreRun: func(cmd *cobra.Command, args []string) {
-			_ = viper.BindPFlags(cmd.Flags())
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			log.Infof("The compute instance %s will be deleted ...", args[0])
-
-			var opts []yc.ClientConfig
-			cloudName := viper.GetString("cloud")
-			if len(cloudName) > 0 {
-				opts = append(opts, yc.CloudName(cloudName))
-			}
-
-			folderName := viper.GetString("folder")
-			if len(folderName) > 0 {
-				opts = append(opts, yc.FolderName(folderName))
-			}
-
-			client, err := yc.NewClient(viper.GetString("token"), opts...)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			op, err := client.ComputeInstanceDelete(cmd.Context(), args[0])
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if viper.GetBool("no-wait") {
-				return
-			}
-
-			if err = op.Wait(cmd.Context()); err != nil {
-				log.Fatal(err)
-			}
-
-			log.Info("The compute instance has been deleted")
+			log.Infof("The compute instance %q (%s) created", name, yc.GetIPv4(instance).PublicOrPrivate(true))
 		},
 	}
 
@@ -196,18 +133,7 @@ var (
 			_ = viper.BindPFlags(cmd.Flags())
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			var opts []yc.ClientConfig
-			cloudName := viper.GetString("cloud")
-			if len(cloudName) > 0 {
-				opts = append(opts, yc.CloudName(cloudName))
-			}
-
-			folderName := viper.GetString("folder")
-			if len(folderName) > 0 {
-				opts = append(opts, yc.FolderName(folderName))
-			}
-
-			client, err := yc.NewClient(viper.GetString("token"), opts...)
+			client, err := newClient()
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -225,6 +151,14 @@ var (
 				})
 			}
 
+			if cmd.Flags().Changed("zone") {
+				filters = append(filters, yc.Filter{
+					Field:    "zoneId",
+					Operator: yc.OperatorEq,
+					Value:    viper.GetString("zone"),
+				})
+			}
+
 			var lbl map[string]string
 			if !viper.GetBool("all") {
 				lbl = map[string]string{common.ManagedKey: common.KsToolKey}
@@ -234,97 +168,36 @@ var (
 				log.Fatal(err)
 			}
 
-			yc.FPrintComputeList(os.Stdout, lst)
+			yc.FPrintComputeList(os.Stdout, lst, viper.GetBool("no-header"))
 		},
+	}
+
+	vmDelete = &cobra.Command{
+		Aliases: []string{"rm", "del"},
+		Use:     "delete",
+		Short:   "Delete a compute instance",
+		PreRun: func(cmd *cobra.Command, args []string) {
+			_ = viper.BindPFlags(cmd.Flags())
+		},
+		Run: computeInstanceAction("delete"),
 	}
 
 	vmStart = &cobra.Command{
-		Use:     "start <instance-id>",
-		Short:   "Start a compute instance",
-		PreRunE: exactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var opts []yc.ClientConfig
-			cloudName := viper.GetString("cloud")
-			if len(cloudName) > 0 {
-				opts = append(opts, yc.CloudName(cloudName))
-			}
-
-			folderName := viper.GetString("folder")
-			if len(folderName) > 0 {
-				opts = append(opts, yc.FolderName(folderName))
-			}
-
-			client, err := yc.NewClient(viper.GetString("token"), opts...)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			op, err := client.ComputeInstanceStart(cmd.Context(), args[0])
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if viper.GetBool("no-wait") {
-				return
-			}
-
-			if err = op.Wait(cmd.Context()); err != nil {
-				log.Fatal(err)
-			}
-
-			resp, err := op.Response()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			instance := resp.(*computev1.Instance)
-			log.Infof("The compute instance %s (%s) started",
-				instance.Name, yc.GetIPv4(instance).PublicOrPrivate())
+		Use:   "start",
+		Short: "Start a compute instance",
+		PreRun: func(cmd *cobra.Command, args []string) {
+			_ = viper.BindPFlags(cmd.Flags())
 		},
+		Run: computeInstanceAction("start"),
 	}
 
 	vmStop = &cobra.Command{
-		Use:     "stop <instance-id>",
-		Short:   "Stop a compute instance",
-		PreRunE: exactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var opts []yc.ClientConfig
-			cloudName := viper.GetString("cloud")
-			if len(cloudName) > 0 {
-				opts = append(opts, yc.CloudName(cloudName))
-			}
-
-			folderName := viper.GetString("folder")
-			if len(folderName) > 0 {
-				opts = append(opts, yc.FolderName(folderName))
-			}
-
-			client, err := yc.NewClient(viper.GetString("token"), opts...)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			op, err := client.ComputeInstanceStop(cmd.Context(), args[0])
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if viper.GetBool("no-wait") {
-				return
-			}
-
-			if err = op.Wait(cmd.Context()); err != nil {
-				log.Fatal(err)
-			}
-
-			resp, err := op.Response()
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			instance := resp.(*computev1.Instance)
-			log.Infof("The compute instance %s stopped", instance.Name)
+		Use:   "stop",
+		Short: "Stop a compute instance",
+		PreRun: func(cmd *cobra.Command, args []string) {
+			_ = viper.BindPFlags(cmd.Flags())
 		},
+		Run: computeInstanceAction("stop"),
 	}
 
 	vmUserDataShow = &cobra.Command{
@@ -333,40 +206,33 @@ var (
 		Short:   "Show user-data for a compute instance",
 		PreRun: func(cmd *cobra.Command, args []string) {
 			_ = viper.BindPFlags(cmd.Flags())
+			cmd.InheritedFlags().VisitAll(func(f *pflag.Flag) {
+				if _, ok := f.Annotations[cobra.BashCompOneRequiredFlag]; ok {
+					_ = cmd.InheritedFlags().SetAnnotation(f.Name, cobra.BashCompOneRequiredFlag, []string{"false"})
+				}
+			})
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			var config *yc.ComputeInstanceConfig
-			if err := viper.Unmarshal(&config); err != nil {
+			ud, err := computeInstanceUserData(viper.GetBool("raw"))
+			if err != nil {
 				log.Fatal(err)
 			}
 
-			tpl := common.UserDataTemplate
-			if len(config.UserDataFile) > 0 {
-				file, err := homedir.Expand(config.UserDataFile)
-				if err != nil {
-					log.Fatal(err)
-				}
-				b, err := os.ReadFile(file)
-				if err != nil {
-					log.Fatal(err)
-				}
-				tpl = string(b)
-			}
-			if viper.GetBool("template") {
-				fmt.Print(tpl)
-				return
-			}
-
-			if err := config.SetUserData(tpl); err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Print(config.Metadata[common.UserDataKey])
+			cmd.Print(ud)
 		},
 	}
 )
 
 func init() {
+	computeCmd.AddCommand(
+		vmCreate,
+		vmDelete,
+		vmList,
+		vmStart,
+		vmStop,
+		vmUserDataShow,
+	)
+
 	computeCreateFlags(vmCreate)
 	userdataFlags(vmCreate)
 	deleteFlags(vmDelete)
@@ -376,15 +242,6 @@ func init() {
 	vmListFlags(vmList)
 	vmUserDataShowFlags(vmUserDataShow)
 	userdataFlags(vmUserDataShow)
-
-	computeCmd.AddCommand(
-		vmCreate,
-		vmDelete,
-		vmList,
-		vmStart,
-		vmStop,
-		vmUserDataShow,
-	)
 
 	computeCmd.PersistentFlags().String("zone", ycv1alpha1.DefaultZone, "zone for creating resources")
 }
@@ -425,15 +282,17 @@ func deleteFlags(cmd *cobra.Command) {
 	cmd.Flags().String("id", "", "id of compute instance")
 	cmd.Flags().String("name", "", "name of compute instance")
 	cmd.MarkFlagsMutuallyExclusive("id", "name")
+	cmd.MarkFlagsOneRequired("id", "name")
 }
 
 func vmListFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("all", false, "show all compute instances")
+	cmd.Flags().Bool("no-header", false, "don't print headers")
 	cmd.Flags().String("status", "", "show compute instances with specific status. Allow: "+yc.Statuses())
 }
 
 func vmUserDataShowFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("template", false, "not render template")
+	cmd.Flags().Bool("raw", false, "not render template")
 }
 
 func bind(cmd *cobra.Command, name string, key ...string) {
@@ -444,15 +303,70 @@ func bind(cmd *cobra.Command, name string, key ...string) {
 	_ = viper.BindPFlag(viperKey, cmd.Flags().Lookup(name))
 }
 
-// exactArgs returns an error if there are not exactly n args.
-func exactArgs(n int) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != n {
-			return fmt.Errorf("accepts %d arg(s), received %d", n, len(args))
-		}
-		_ = viper.BindPFlags(cmd.Flags())
-		return nil
+func newClient() (*yc.Client, error) {
+	var opts []yc.ClientConfig
+	cloudName := viper.GetString("cloud")
+	if viper.IsSet("cloud") {
+		opts = append(opts, yc.CloudName(cloudName))
 	}
+
+	folderName := viper.GetString("folder")
+	if viper.IsSet("folder") {
+		opts = append(opts, yc.FolderName(folderName))
+	}
+
+	return yc.NewClient(viper.GetString("token"), opts...)
+}
+
+func computeInstanceUserData(raw bool) (string, error) {
+	userDataTemplate := common.UserDataTemplate
+	if viper.IsSet("user-data-file") {
+		file, err := homedir.Expand(viper.GetString("user-data-file"))
+		if err != nil {
+			return "", err
+		}
+
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", err
+		}
+		userDataTemplate = string(data)
+	}
+
+	if raw {
+		return userDataTemplate, nil
+	}
+
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+
+	var keys []string
+	if viper.IsSet("ssh-key") {
+		for _, keyFile := range viper.GetStringSlice("ssh-key") {
+			keyFile, err = homedir.Expand(keyFile)
+			if err != nil {
+				return "", err
+			}
+			b, err := os.ReadFile(keyFile)
+			if err != nil {
+				return "", err
+			}
+			keys = append(keys, string(b))
+		}
+	} else {
+		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return utils.Template(userDataTemplate, map[string]any{
+		"user":    viper.GetString("user"),
+		"sshKeys": keys,
+		"shell":   viper.GetString("shell"),
+	})
 }
 
 func computeInstanceFromFlags(client *yc.Client) (*ycv1alpha1.ComputeInstance, error) {
@@ -461,49 +375,8 @@ func computeInstanceFromFlags(client *yc.Client) (*ycv1alpha1.ComputeInstance, e
 		return nil, err
 	}
 
-	userDataTemplate := common.UserDataTemplate
-	if viper.IsSet("user-data-file") {
-		file, err := homedir.Expand(viper.GetString("user-data-file"))
-		if err != nil {
-			return nil, err
-		}
-
-		data, err := os.ReadFile(file)
-		if err != nil {
-			return nil, err
-		}
-		userDataTemplate = string(data)
-	}
-	usr, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-
-	var keys []string
-	if viper.IsSet("ssh-key") {
-		for _, keyFile := range viper.GetStringSlice("ssh-key") {
-			keyFile, err = homedir.Expand(keyFile)
-			if err != nil {
-				return nil, err
-			}
-			b, err := os.ReadFile(keyFile)
-			if err != nil {
-				return nil, err
-			}
-			keys = append(keys, string(b))
-		}
-	} else {
-		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	obj.Spec.UserData, err = utils.Template(userDataTemplate, map[string]any{
-		"user":    viper.GetString("user"),
-		"sshKeys": keys,
-		"shell":   viper.GetString("shell"),
-	})
+	var err error
+	obj.Spec.UserData, err = computeInstanceUserData(false)
 	if err != nil {
 		return nil, err
 	}
@@ -532,4 +405,66 @@ func computeInstanceFromFlags(client *yc.Client) (*ycv1alpha1.ComputeInstance, e
 	scheme.Defaults(obj)
 
 	return obj, nil
+}
+
+func computeInstanceAction(action string) func(cmd *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		client, err := newClient()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		ctx := cmd.Context()
+		instanceId := viper.GetString("id")
+		if viper.IsSet("name") {
+			name := viper.GetString("name")
+			lst, err := client.ComputeInstanceList(ctx, "", nil, yc.Filter{
+				Field:    "name",
+				Operator: yc.OperatorEq,
+				Value:    name,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			if len(lst) == 0 {
+				log.Fatalf("no compute instance found with name %s", name)
+			} else if len(lst) > 1 {
+				log.Fatalf("found more than one compute instance with name %s", name)
+			}
+
+			instanceId = lst[0].Id
+		}
+
+		var op *operation.Operation
+		switch action {
+		case "delete":
+			op, err = client.ComputeInstanceDelete(ctx, instanceId)
+		case "start":
+			op, err = client.ComputeInstanceStart(ctx, instanceId)
+		case "stop":
+			op, err = client.ComputeInstanceStop(ctx, instanceId)
+		default:
+			log.Fatalf("unknown action %q", action)
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if viper.GetBool("no-wait") {
+			return
+		}
+
+		if err = op.Wait(ctx); err != nil {
+			log.Fatal(err)
+		}
+
+		resp, err := op.Response()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		instance := resp.(*computev1.Instance)
+		log.Infof("The compute instance %s (%s) %s",
+			instance.Name, yc.GetIPv4(instance).PublicOrPrivate(true), action)
+	}
 }

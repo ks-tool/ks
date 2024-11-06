@@ -18,24 +18,16 @@ package yc
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"os"
-	"os/user"
-	"path/filepath"
 	"sort"
 	"strings"
 
-	"github.com/ks-tool/ks/pkg/common"
 	"github.com/ks-tool/ks/pkg/utils"
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
 	"github.com/yandex-cloud/go-sdk/operation"
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
-
-	"github.com/mitchellh/go-homedir"
-	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -86,135 +78,6 @@ type Filter struct {
 
 func (f Filter) String() string {
 	return fmt.Sprintf(`%s %s %q`, f.Field, f.Operator, f.Value)
-}
-
-type ComputeInstanceConfig struct {
-	Name       string `mapstructure:"name"`
-	PlatformID string `mapstructure:"platform"`
-
-	FolderID string `mapstructure:"folder-id"`
-	SubnetID string `mapstructure:"subnet-id"`
-	Zone     string `mapstructure:"zone"`
-	Address  string `mapstructure:"address"`
-
-	Cores        uint `mapstructure:"cores"`
-	CoreFraction uint `mapstructure:"core-fraction"`
-	Memory       uint `mapstructure:"memory"`
-
-	DiskType string `mapstructure:"disk-type"`
-	ImageID  string `mapstructure:"image-id"`
-	DiskSize uint   `mapstructure:"disk-size"`
-
-	Preemptible    bool   `mapstructure:"preemptible"`
-	NoPublicIP     bool   `mapstructure:"no-public-ip"`
-	ServiceAccount string `mapstructure:"sa"`
-
-	UserDataFile      string   `mapstructure:"user-data-file"`
-	User              string   `mapstructure:"user"`
-	SshPublicKeyFiles []string `mapstructure:"ssh-key"`
-	Shell             string   `mapstructure:"shell"`
-
-	ClusterID         string
-	Metadata          map[string]string
-	Labels            map[string]string
-	SshAuthorizedKeys []string
-}
-
-func (cfg *ComputeInstanceConfig) SetUserData(tpl string) error {
-	if err := cfg.fillSshKeys(); err != nil {
-		return err
-	}
-
-	if len(tpl) == 0 {
-		tpl = common.UserDataTemplate
-	}
-	if cfg.Metadata == nil {
-		cfg.Metadata = make(map[string]string)
-	}
-	if _, ok := cfg.Metadata[common.UserDataKey]; !ok {
-		userData, err := utils.Template(tpl, map[string]any{
-			"user":              cfg.User,
-			"sshAuthorizedKeys": cfg.SshAuthorizedKeys,
-			"shell":             cfg.Shell,
-		})
-		if err != nil {
-			return err
-		}
-
-		cfg.Metadata[common.UserDataKey] = userData
-	}
-
-	return nil
-}
-
-func (cfg *ComputeInstanceConfig) fillSshKeys() error {
-	if len(cfg.SshAuthorizedKeys) > 0 {
-		return nil
-	}
-
-	usr, err := user.Current()
-	if err != nil {
-		return err
-	}
-
-	if len(cfg.SshPublicKeyFiles) > 0 {
-		for _, key := range cfg.SshPublicKeyFiles {
-			key, err = homedir.Expand(key)
-			if err != nil {
-				return err
-			}
-			b, err := os.ReadFile(key)
-			if err != nil {
-				return err
-			}
-
-			keyData := strings.TrimSpace(string(b))
-			keyParts := strings.Split(keyData, " ")
-			cfg.SshAuthorizedKeys = append(cfg.SshAuthorizedKeys, strings.Join(keyParts[:2], " "))
-		}
-
-		return nil
-	}
-
-	sshDir := filepath.Join(usr.HomeDir, ".ssh")
-	dir, err := os.ReadDir(sshDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range dir {
-		filename := file.Name()
-		if file.IsDir() || filename == "config" || strings.HasPrefix(filename, "known_hosts") {
-			continue
-		}
-
-		b, err := os.ReadFile(filepath.Join(sshDir, filename))
-		if err != nil {
-			return err
-		}
-
-		keyData := strings.TrimSpace(string(b))
-		if strings.Contains(keyData, "PRIVATE KEY") {
-			continue
-		}
-
-		keyParts := strings.Split(keyData, " ")
-		if len(keyParts) < 2 {
-			continue
-		}
-
-		keyBytes, err := base64.StdEncoding.DecodeString(keyParts[1])
-		if err != nil {
-			continue
-		}
-
-		if _, err := ssh.ParsePublicKey(keyBytes); err == nil {
-			key := strings.Join(keyParts[:2], " ")
-			cfg.SshAuthorizedKeys = append(cfg.SshAuthorizedKeys, key)
-		}
-	}
-
-	return nil
 }
 
 func (c *Client) ComputeInstanceCreate(ctx context.Context, req *compute.CreateInstanceRequest) (*operation.Operation, error) {

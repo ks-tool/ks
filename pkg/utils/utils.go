@@ -18,10 +18,11 @@ package utils
 
 import (
 	"encoding/base64"
-	"golang.org/x/crypto/ssh"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const Gib int64 = 1024 * 1024 * 1024
