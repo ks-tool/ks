@@ -14,12 +14,9 @@
  limitations under the License.
 */
 
-package main
-
-import (
-	"github.com/ks-tool/ks/cmd"
-)
-
-func main() {
-	cmd.Execute()
-}
+// Package v1alpha1 contains API Schema definitions for the yc v1alpha1 API group
+// +k8s:deepcopy-gen=package
+// +k8s:conversion-gen=false
+// +k8s:defaulter-gen=TypeMeta
+// +groupName=yc.ks-tool.dev
+package v1alpha1

@@ -21,18 +21,9 @@ import (
 )
 
 const (
-	KsToolKey = "yc.ks-tool.dev"
-
-	DefaultDiskType          = "network-ssd"
-	DefaultDiskID            = "fd83j4siasgfq4pi1qif" //debian-12-v20240920
-	DefaultDiskSizeGib int64 = 10
-
-	DefaultPlatformID = "standard-v3"
-	DefaultZone       = "ru-central1-d"
-
-	DefaultCores        int64 = 2
-	DefaultCoreFraction int64 = 100
-	DefaultMemoryGib    int64 = 2
-
 	requestTimeout = 15 * time.Second
+
+	SerialPortEnableKey = "serial-port-enable"    // 1 to enable or 0 (default) to disable access
+	EnableOSLoginKey    = "enable-oslogin"        // true to enable or false (default) to disable access
+	InstallUnifiedAgent = "install-unified-agent" // 1 to install or 0 (default) not to install the agent
 )

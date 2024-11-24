@@ -14,12 +14,20 @@
  limitations under the License.
 */
 
-package main
+package v1alpha1
 
 import (
-	"github.com/ks-tool/ks/cmd"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func main() {
-	cmd.Execute()
-}
+const (
+	GroupName    = "yc.ks-tool.dev"
+	GroupVersion = "v1alpha1"
+)
+
+var (
+	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: GroupVersion}
+	localSchemeBuilder = runtime.NewSchemeBuilder()
+	AddToScheme        = localSchemeBuilder.AddToScheme
+)

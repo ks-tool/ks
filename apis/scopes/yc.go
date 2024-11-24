@@ -14,12 +14,12 @@
  limitations under the License.
 */
 
-package main
+package scopes
 
-import (
-	"github.com/ks-tool/ks/cmd"
-)
+import ycsdk "github.com/yandex-cloud/go-sdk"
 
-func main() {
-	cmd.Execute()
+type CreateInstanceRequestConversionScope struct {
+	CloudId  string
+	FolderId string
+	Sdk      *ycsdk.SDK
 }

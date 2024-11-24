@@ -14,12 +14,23 @@
  limitations under the License.
 */
 
-package main
+package scheme
 
 import (
-	"github.com/ks-tool/ks/cmd"
+	ycv1alpha1 "github.com/ks-tool/ks/apis/yc/v1alpha1"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
-func main() {
-	cmd.Execute()
+var (
+	Scheme   = runtime.NewScheme()
+	Defaults = Scheme.Default
+	Convert  = Scheme.Convert
+	Codecs   = serializer.NewCodecFactory(Scheme)
+)
+
+func init() {
+	utilruntime.Must(ycv1alpha1.AddToScheme(Scheme))
 }

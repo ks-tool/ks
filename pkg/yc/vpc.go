@@ -24,33 +24,41 @@ import (
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 )
 
-func (c *Client) FirstSubnetInZone(ctx context.Context, folderID string, zone string) (string, error) {
+func (c *Client) FirstSubnetInZone(ctx context.Context, folder string, zone string) (string, error) {
+	var folderId string
+	if len(folder) == 0 || folder == c.folder {
+		folderId = c.folderId
+	} else {
+		cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+		defer cancel()
+
+		fld := sdkresolvers.FolderResolver(folder, sdkresolvers.CloudID(c.cloudId))
+		if err := fld.Run(cctx, c.sdk); err != nil {
+			return "", err
+		}
+		if fld.Err() != nil {
+			return "", fld.Err()
+		}
+		folderId = fld.ID()
+	}
+
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	resp, err := c.sdk.VPC().Subnet().List(cctx, &vpc.ListSubnetsRequest{
-		FolderId: folderID,
-		PageSize: sdkresolvers.DefaultResolverPageSize,
+	iter := c.sdk.VPC().Subnet().SubnetIterator(cctx, &vpc.ListSubnetsRequest{
+		FolderId: folderId,
 	})
-	if err != nil {
+
+	for iter.Next() {
+		subnet := iter.Value()
+		if subnet.ZoneId == zone {
+			return subnet.Id, nil
+		}
+	}
+
+	if err := iter.Error(); err != nil {
 		return "", err
 	}
 
-	if len(resp.Subnets) == 0 {
-		return "", fmt.Errorf("no subnet in zone %q", zone)
-	}
-
-	subnetID := ""
-	for _, subnet := range resp.Subnets {
-		if subnet.ZoneId != zone {
-			continue
-		}
-		subnetID = subnet.Id
-		break
-	}
-	if subnetID == "" {
-		return "", fmt.Errorf("subnet not found")
-	}
-
-	return subnetID, err
+	return "", fmt.Errorf("no subnet in zone %q", zone)
 }

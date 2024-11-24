@@ -14,12 +14,19 @@
  limitations under the License.
 */
 
-package main
+package common
 
-import (
-	"github.com/ks-tool/ks/cmd"
-)
+import "strings"
 
-func main() {
-	cmd.Execute()
+type GroupedErrors struct {
+	Group []error
+}
+
+func (e GroupedErrors) Error() string {
+	var out []string
+	for _, err := range e.Group {
+		out = append(out, err.Error())
+	}
+
+	return strings.Join(out, ", ")
 }

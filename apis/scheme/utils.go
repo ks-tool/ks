@@ -14,12 +14,36 @@
  limitations under the License.
 */
 
-package main
+package scheme
 
 import (
-	"github.com/ks-tool/ks/cmd"
+	"os"
+
+	"github.com/mitchellh/go-homedir"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
-func main() {
-	cmd.Execute()
+func Decode(b []byte) (runtime.Object, error) {
+	return runtime.Decode(Codecs.UniversalDeserializer(), b)
+}
+
+func FromFileWithDefaults(path string) (runtime.Object, error) {
+	manifestFilePath, err := homedir.Expand(path)
+	if err != nil {
+		return nil, err
+	}
+
+	manifestBytes, err := os.ReadFile(manifestFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, err := Decode(manifestBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	Defaults(obj)
+
+	return obj, nil
 }

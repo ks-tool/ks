@@ -18,22 +18,41 @@ package common
 
 const (
 	ManagedKey = "managed"
+	KsToolKey  = "yc.ks-tool.dev"
 
-	LabelClusterNameKey       = ""
+	DefaultCores        = 2
+	DefaultDiskSizeGib  = 10
+	DefaultCoreFraction = 100
+	DefaultMemoryGib    = 2
+
+	LabelClusterKey           = "control-plane.kubernetes.io/id"
 	LabelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
 
-	UserDataKey      = "user-data"
-	UserDataTemplate = `#cloud-config
+	UserDataKey        = "user-data"
+	UserDataVMTemplate = `#cloud-config
 users:
   - name: {{ .user }}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: {{ default "/bin/bash" .shell }}
-    {{- with .sshAuthorizedKeys }}
+    {{- with .sshKeys }}
     ssh_authorized_keys:
       {{- range $key := . }}
       - {{ $key }}
       {{- end }}
     {{- end }}
 `
-	UserDataK8sTemplate = UserDataTemplate + ``
+	UserDataK8sControlPlainTemplate = UserDataVMTemplate + `
+package_update: true
+packages:
+ - ""
+runcmd:
+ - ""
+`
+	UserDataK8sWorkerTemplate = UserDataVMTemplate + `
+package_update: true
+packages:
+ - ""
+runcmd:
+ - ""
+`
 )

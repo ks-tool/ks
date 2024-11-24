@@ -16,10 +16,6 @@
 
 package main
 
-import (
-	"github.com/ks-tool/ks/cmd"
-)
-
 func main() {
-	cmd.Execute()
+	//
 }

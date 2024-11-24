@@ -1,4 +1,4 @@
-/*
+<!---
  Copyright (c) 2024 Alexey Shulutkov <github@shulutkov.ru>
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +12,8 @@
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  See the License for the specific language governing permissions and
  limitations under the License.
-*/
-
-package main
-
-import (
-	"github.com/ks-tool/ks/cmd"
-)
-
-func main() {
-	cmd.Execute()
-}
+-->
+# Licenses report
+{{ range . }}
+ - [{{.LicenseName}}]({{.LicenseURL}}) {{.Name}}
+{{- end }}
