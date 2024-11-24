@@ -27,6 +27,7 @@ import (
 	"github.com/ks-tool/ks/pkg/utils"
 
 	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/vpc/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
@@ -177,7 +178,7 @@ func Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(in *ComputeIns
 				}
 			}
 
-			return fmt.Errorf("no subnet found in zone %s", spec.Zone)
+			return fmt.Errorf("no subnet found in zone %q", spec.Zone)
 		}(); err != nil {
 			return err
 		}
@@ -213,6 +214,7 @@ func Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(in *ComputeIns
 		Metadata:         metadata,
 		ServiceAccountId: saId,
 		BootDiskSpec: &computev1.AttachedDiskSpec{
+			Mode:       computev1.AttachedDiskSpec_READ_WRITE,
 			AutoDelete: true,
 			Disk: &computev1.AttachedDiskSpec_DiskSpec_{
 				DiskSpec: diskSpec,
@@ -220,6 +222,115 @@ func Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(in *ComputeIns
 		},
 		NetworkInterfaceSpecs: networks,
 		SchedulingPolicy:      &computev1.SchedulingPolicy{Preemptible: spec.Preemptible},
+	}
+
+	return nil
+}
+
+func Convert_v1alpha1_ComputeInstance_To_instancegroup_CreateInstanceGroupRequest(in *ComputeInstance, out *instancegroup.CreateInstanceGroupRequest, s conversion.Scope) error {
+	cir := new(computev1.CreateInstanceRequest)
+	if err := Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(in, cir, s); err != nil {
+		return err
+	}
+
+	tpl := new(instancegroup.InstanceTemplate)
+	tpl.Labels = cir.Labels
+	tpl.PlatformId = cir.PlatformId
+	tpl.ResourcesSpec = &instancegroup.ResourcesSpec{
+		Memory:       cir.ResourcesSpec.Memory,
+		Cores:        cir.ResourcesSpec.Cores,
+		CoreFraction: cir.ResourcesSpec.CoreFraction,
+		Gpus:         cir.ResourcesSpec.Gpus,
+	}
+	tpl.Metadata = cir.Metadata
+
+	diskSpec := cir.BootDiskSpec.Disk.(*computev1.AttachedDiskSpec_DiskSpec_).DiskSpec
+	srcDisk := diskSpec.Source.(*computev1.AttachedDiskSpec_DiskSpec_ImageId)
+	tpl.BootDiskSpec = &instancegroup.AttachedDiskSpec{
+		Mode: instancegroup.AttachedDiskSpec_Mode(cir.BootDiskSpec.Mode),
+		DiskSpec: &instancegroup.AttachedDiskSpec_DiskSpec{
+			TypeId:                      diskSpec.TypeId,
+			Size:                        diskSpec.Size,
+			SourceOneof:                 &instancegroup.AttachedDiskSpec_DiskSpec_ImageId{ImageId: srcDisk.ImageId},
+			PreserveAfterInstanceDelete: false,
+		},
+	}
+
+	tpl.NetworkInterfaceSpecs = make([]*instancegroup.NetworkInterfaceSpec, len(cir.NetworkInterfaceSpecs))
+	for i, netif := range cir.NetworkInterfaceSpecs {
+		ipv4Spec := &instancegroup.PrimaryAddressSpec{
+			Address: netif.PrimaryV4AddressSpec.Address,
+		}
+		if netif.PrimaryV4AddressSpec.OneToOneNatSpec != nil {
+			ipv4Spec.OneToOneNatSpec = &instancegroup.OneToOneNatSpec{
+				IpVersion: instancegroup.IpVersion(netif.PrimaryV4AddressSpec.OneToOneNatSpec.IpVersion),
+				Address:   netif.PrimaryV4AddressSpec.OneToOneNatSpec.Address,
+			}
+		}
+		tpl.NetworkInterfaceSpecs[i] = &instancegroup.NetworkInterfaceSpec{
+			SubnetIds:            []string{netif.SubnetId},
+			PrimaryV4AddressSpec: ipv4Spec,
+			SecurityGroupIds:     netif.SecurityGroupIds,
+		}
+	}
+	tpl.SchedulingPolicy = &instancegroup.SchedulingPolicy{Preemptible: cir.SchedulingPolicy.Preemptible}
+	tpl.MetadataOptions = &instancegroup.MetadataOptions{
+		GceHttpEndpoint:   instancegroup.MetadataOption(cir.MetadataOptions.GceHttpEndpoint),
+		AwsV1HttpEndpoint: instancegroup.MetadataOption(cir.MetadataOptions.AwsV1HttpEndpoint),
+		GceHttpToken:      instancegroup.MetadataOption(cir.MetadataOptions.GceHttpToken),
+		AwsV1HttpToken:    instancegroup.MetadataOption(cir.MetadataOptions.AwsV1HttpToken),
+	}
+
+	out.FolderId = cir.FolderId
+	out.Name = cir.Name
+	out.Description = cir.Description
+	out.Labels = cir.Labels
+	out.ServiceAccountId = cir.ServiceAccountId
+	out.InstanceTemplate = tpl
+	out.ScalePolicy = &instancegroup.ScalePolicy{
+		ScaleType: &instancegroup.ScalePolicy_FixedScale_{
+			FixedScale: &instancegroup.ScalePolicy_FixedScale{},
+		},
+	}
+	out.DeployPolicy = &instancegroup.DeployPolicy{
+		MaxExpansion: 1,
+	}
+	out.AllocationPolicy = &instancegroup.AllocationPolicy{
+		Zones: []*instancegroup.AllocationPolicy_Zone{
+			{
+				ZoneId: cir.ZoneId,
+			},
+		},
+	}
+
+	return nil
+}
+
+func Convert_v1alpha1_Kubernetes_To_v1alpha1_KubernetesRequest(in *Kubernetes, out *KubernetesRequest, s conversion.Scope) error {
+	controlPlain := &ComputeInstance{
+		ObjectMeta: in.ObjectMeta,
+		Spec:       in.Spec.ControlPlain,
+	}
+
+	if out.ControlPlain == nil {
+		out.ControlPlain = &computev1.CreateInstanceRequest{}
+	}
+
+	if err := Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(controlPlain, out.ControlPlain, s); err != nil {
+		return err
+	}
+
+	out.NodeGroups = make([]*instancegroup.CreateInstanceGroupRequest, len(in.Spec.NodeGroups))
+	for i, ng := range in.Spec.NodeGroups {
+		cigr := new(instancegroup.CreateInstanceGroupRequest)
+		ci := &ComputeInstance{
+			ObjectMeta: in.ObjectMeta,
+			Spec:       ng,
+		}
+		if err := Convert_v1alpha1_ComputeInstance_To_instancegroup_CreateInstanceGroupRequest(ci, cigr, s); err != nil {
+			return err
+		}
+		out.NodeGroups[i] = cigr
 	}
 
 	return nil

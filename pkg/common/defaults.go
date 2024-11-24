@@ -16,12 +16,6 @@ limitations under the License.
 
 package common
 
-import (
-	gouser "os/user"
-
-	"github.com/ks-tool/ks/pkg/utils"
-)
-
 const (
 	ManagedKey = "managed"
 	KsToolKey  = "yc.ks-tool.dev"
@@ -31,11 +25,11 @@ const (
 	DefaultCoreFraction = 100
 	DefaultMemoryGib    = 2
 
-	LabelClusterNameKey       = ""
+	LabelClusterKey           = "control-plane.kubernetes.io/id"
 	LabelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
 
-	UserDataKey      = "user-data"
-	UserDataTemplate = `#cloud-config
+	UserDataKey        = "user-data"
+	UserDataVMTemplate = `#cloud-config
 users:
   - name: {{ .user }}
     sudo: ALL=(ALL) NOPASSWD:ALL
@@ -47,28 +41,18 @@ users:
       {{- end }}
     {{- end }}
 `
-	UserDataK8sTemplate = UserDataTemplate + ``
+	UserDataK8sControlPlainTemplate = UserDataVMTemplate + `
+package_update: true
+packages:
+ - ""
+runcmd:
+ - ""
+`
+	UserDataK8sWorkerTemplate = UserDataVMTemplate + `
+package_update: true
+packages:
+ - ""
+runcmd:
+ - ""
+`
 )
-
-func DefaultUserData(user string, keys ...string) (string, error) {
-	usr, err := gouser.Current()
-	if err != nil {
-		return "", err
-	}
-
-	if len(user) == 0 {
-		user = usr.Username
-	}
-
-	if len(keys) == 0 {
-		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return utils.Template(UserDataTemplate, map[string]any{
-		"user":    user,
-		"sshKeys": keys,
-	})
-}

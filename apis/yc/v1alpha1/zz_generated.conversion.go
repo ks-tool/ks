@@ -22,6 +22,7 @@ package v1alpha1
 
 import (
 	v1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	instancegroup "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -33,8 +34,18 @@ func init() {
 // RegisterConversions adds conversion functions to the given scheme.
 // Public to allow building arbitrary schemes.
 func RegisterConversions(s *runtime.Scheme) error {
+	if err := s.AddConversionFunc((*ComputeInstance)(nil), (*instancegroup.CreateInstanceGroupRequest)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_ComputeInstance_To_instancegroup_CreateInstanceGroupRequest(a.(*ComputeInstance), b.(*instancegroup.CreateInstanceGroupRequest), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddConversionFunc((*ComputeInstance)(nil), (*v1.CreateInstanceRequest)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1alpha1_ComputeInstance_To_v1_CreateInstanceRequest(a.(*ComputeInstance), b.(*v1.CreateInstanceRequest), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*Kubernetes)(nil), (*KubernetesRequest)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_Kubernetes_To_v1alpha1_KubernetesRequest(a.(*Kubernetes), b.(*KubernetesRequest), scope)
 	}); err != nil {
 		return err
 	}

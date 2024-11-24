@@ -53,8 +53,6 @@ var YandexCloudCmd = &cobra.Command{
 }
 
 func init() {
-	YandexCloudCmd.AddCommand(computeCmd, k8sCmd)
-
 	YandexCloudCmd.PersistentFlags().String("cloud", "", "set the name of the cloud to use")
 	YandexCloudCmd.PersistentFlags().String("folder", "", "set the name of the folder to use")
 	YandexCloudCmd.PersistentFlags().String("token-file", "", "read token from file")

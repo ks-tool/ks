@@ -17,6 +17,9 @@
 package v1alpha1
 
 import (
+	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -74,6 +77,7 @@ type DiskSpec struct {
 }
 
 type NetworkInterfaceSpec struct {
+	// +optional
 	Subnet string `json:"subnet"`
 	// +optional
 	PublicIp *string `json:"publicIp,omitempty"`
@@ -85,7 +89,7 @@ type NetworkInterfaceSpec struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ComputeInstance is the Schema for the computeinstance API
+// ComputeInstance is the Schema for the computeinstance
 type ComputeInstance struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -100,10 +104,26 @@ type KubernetesSpec struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Kubernetes is the Schema for the kubernetes API
+// Kubernetes is the Schema for the kubernetes
 type Kubernetes struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec KubernetesSpec `json:"spec,omitempty"`
 }
+
+// +k8s:deepcopy-gen=false
+
+// KubernetesRequest is the Schema for the kubernetesrequest
+type KubernetesRequest struct {
+	ControlPlain *computev1.CreateInstanceRequest
+	NodeGroups   []*instancegroup.CreateInstanceGroupRequest
+}
+
+// +k8s:deepcopy-gen=false
+
+type ComputeInstanceList struct{}
+
+// +k8s:deepcopy-gen=false
+
+type KubernetesList struct{}

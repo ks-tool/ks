@@ -43,7 +43,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(yc.YandexCloudCmd)
-	rootCmd.PersistentFlags().StringP("config", "c", "config", "config file (search in $HOME/.ks directory)")
+	rootCmd.PersistentFlags().StringP("config", "c", "config", "name of config file (search in $HOME/.ks directory)")
 	rootCmd.PersistentFlags().Bool("debug", false, "enable debug mode")
 	_ = viper.BindPFlags(rootCmd.PersistentFlags())
 }

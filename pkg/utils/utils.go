@@ -29,6 +29,15 @@ const Gib int64 = 1024 * 1024 * 1024
 
 func ToGib(v int) int64 { return int64(v) * Gib }
 
+func In(a []string, s string) bool {
+	for _, i := range a {
+		if i == s {
+			return true
+		}
+	}
+	return false
+}
+
 func AllInMap[T comparable](m1, m2 map[string]T) bool {
 	if len(m2) == 0 {
 		return true

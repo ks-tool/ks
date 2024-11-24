@@ -61,15 +61,6 @@ func SetDefaults_ComputeInstance(obj *ComputeInstance) {
 	if obj.Labels == nil {
 		obj.Labels = make(map[string]string)
 	}
-	if v, ok := obj.Labels[common.ManagedKey]; !ok || v != common.KsToolKey {
-		obj.Labels[common.ManagedKey] = common.KsToolKey
-	}
 
-	if len(obj.Spec.UserData) == 0 {
-		var err error
-		obj.Spec.UserData, err = common.DefaultUserData("")
-		if err != nil {
-			panic(err)
-		}
-	}
+	obj.Labels[common.ManagedKey] = common.KsToolKey
 }

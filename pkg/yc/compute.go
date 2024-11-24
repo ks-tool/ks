@@ -18,6 +18,7 @@ package yc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,6 +29,8 @@ import (
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1/instancegroup"
 	"github.com/yandex-cloud/go-sdk/operation"
 	"github.com/yandex-cloud/go-sdk/sdkresolvers"
+
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 var (
@@ -150,20 +153,117 @@ func (c *Client) ComputeInstanceStop(ctx context.Context, id string) (*operation
 	return c.sdk.WrapOperation(c.sdk.Compute().Instance().Stop(cctx, op))
 }
 
-func (c *Client) ComputeInstanceGroupCreate(ctx context.Context, name string) (*operation.Operation, error) {
+func (c *Client) InstanceGroupCreate(ctx context.Context, req *instancegroup.CreateInstanceGroupRequest) (*operation.Operation, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	op := &instancegroup.CreateInstanceGroupRequest{}
-	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Create(cctx, op))
+	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Create(cctx, req))
 }
 
-func (c *Client) ComputeInstanceGroupDelete(ctx context.Context, id string) (*operation.Operation, error) {
+func (c *Client) InstanceGroupDelete(ctx context.Context, id string) (*operation.Operation, error) {
 	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
 	op := &instancegroup.DeleteInstanceGroupRequest{InstanceGroupId: id}
 	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Delete(cctx, op))
+}
+
+func (c *Client) InstanceGroupStart(ctx context.Context, id string) (*operation.Operation, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	op := &instancegroup.StartInstanceGroupRequest{InstanceGroupId: id}
+	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Start(cctx, op))
+}
+
+func (c *Client) InstanceGroupStop(ctx context.Context, id string) (*operation.Operation, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	op := &instancegroup.StopInstanceGroupRequest{InstanceGroupId: id}
+	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Stop(cctx, op))
+}
+
+func (c *Client) InstanceGroupScale(ctx context.Context, id string, n int) (*operation.Operation, error) {
+	if n < 0 {
+		n = 0
+	}
+
+	op := &instancegroup.UpdateInstanceGroupRequest{
+		InstanceGroupId: id,
+		UpdateMask: &fieldmaskpb.FieldMask{
+			Paths: []string{"scale_policy.fixed_scale.size"},
+		},
+		ScalePolicy: &instancegroup.ScalePolicy{
+			ScaleType: &instancegroup.ScalePolicy_FixedScale_{
+				FixedScale: &instancegroup.ScalePolicy_FixedScale{
+					Size: int64(n)}}}}
+
+	return c.InstanceGroupUpdate(ctx, op)
+}
+
+func (c *Client) InstanceGroupInstancesDelete(ctx context.Context, id string, managedInstanceIds ...string) (*operation.Operation, error) {
+	if len(managedInstanceIds) == 0 {
+		return nil, errors.New("managed instance ids is empty")
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	op := &instancegroup.DeleteInstancesRequest{InstanceGroupId: id, ManagedInstanceIds: managedInstanceIds}
+	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().DeleteInstances(cctx, op))
+}
+
+func (c *Client) InstanceGroupList(ctx context.Context, folderId string, lbl map[string]string) ([]*instancegroup.InstanceGroup, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	if len(folderId) == 0 {
+		folderId = c.folderId
+	}
+
+	op := &instancegroup.ListInstanceGroupsRequest{FolderId: folderId}
+	iter := c.sdk.InstanceGroup().InstanceGroup().InstanceGroupIterator(cctx, op)
+
+	var groups []*instancegroup.InstanceGroup
+	for iter.Next() {
+		item := iter.Value()
+		if utils.AllInMap(item.Labels, lbl) {
+			groups = append(groups, item)
+		}
+	}
+
+	if err := iter.Error(); err != nil {
+		return nil, err
+	}
+
+	return groups, nil
+}
+
+func (c *Client) InstanceGroupInstancesList(ctx context.Context, id string) ([]*instancegroup.ManagedInstance, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	op := &instancegroup.ListInstanceGroupInstancesRequest{InstanceGroupId: id}
+	iter := c.sdk.InstanceGroup().InstanceGroup().InstanceGroupInstancesIterator(cctx, op)
+
+	var lst []*instancegroup.ManagedInstance
+	for iter.Next() {
+		lst = append(lst, iter.Value())
+	}
+
+	if err := iter.Error(); err != nil {
+		return nil, err
+	}
+
+	return lst, nil
+}
+
+func (c *Client) InstanceGroupUpdate(ctx context.Context, req *instancegroup.UpdateInstanceGroupRequest) (*operation.Operation, error) {
+	cctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	return c.sdk.WrapOperation(c.sdk.InstanceGroup().InstanceGroup().Update(cctx, req))
 }
 
 func (c *Client) ComputeImageGetId(ctx context.Context, name, folderId string) (string, error) {
