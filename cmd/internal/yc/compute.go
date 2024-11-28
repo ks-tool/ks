@@ -32,7 +32,6 @@ import (
 
 	computev1 "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1"
 	"github.com/yandex-cloud/go-sdk/operation"
-	"github.com/yandex-cloud/go-sdk/sdkresolvers"
 
 	"github.com/mitchellh/go-homedir"
 	log "github.com/sirupsen/logrus"
@@ -393,9 +392,11 @@ func templateVariables() (map[string]any, error) {
 		username = usr.Username
 	}
 
-	var keys []string
-	if viper.IsSet("ssh-key") {
-		for _, keyFile := range viper.GetStringSlice("ssh-key") {
+	keys := viper.GetStringSlice("ssh-key")
+	if len(keys) == 0 {
+		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
+	} else {
+		for _, keyFile := range keys {
 			keyFile, err = homedir.Expand(keyFile)
 			if err != nil {
 				return nil, err
@@ -406,8 +407,6 @@ func templateVariables() (map[string]any, error) {
 			}
 			keys = append(keys, strings.TrimSpace(string(b)))
 		}
-	} else {
-		keys, err = utils.GetAllSshPublicKeys(usr.HomeDir)
 	}
 
 	out := map[string]any{
@@ -415,8 +414,9 @@ func templateVariables() (map[string]any, error) {
 		"sshKeys": keys,
 	}
 
-	if viper.IsSet("shell") {
-		out["shell"] = viper.GetString("shell")
+	shell := viper.GetString("shell")
+	if len(shell) > 0 {
+		out["shell"] = shell
 	}
 
 	return out, nil
@@ -453,26 +453,25 @@ func computeInstanceFromFlags(client *yc.Client) (*ycv1alpha1.ComputeInstance, e
 		obj.Labels[lbl[0]] = lbl[1]
 	}
 
-	if viper.IsSet("subnet") {
-		subnet := sdkresolvers.SubnetResolver(viper.GetString("subnet"), sdkresolvers.FolderID(client.FolderId()))
-		if err := subnet.Run(context.Background(), client.SDK()); err != nil {
+	subnet := viper.GetString("subnet")
+	if len(subnet) == 0 {
+		snet, err := client.VPCFirstSubnetInZone(context.Background(), "", viper.GetString("zone"))
+		if err != nil {
 			return nil, err
 		}
-		if subnet.Err() != nil {
-			return nil, subnet.Err()
-		}
 
-		netif := ycv1alpha1.NetworkInterfaceSpec{
-			Subnet:    subnet.ID(),
-			PrivateIp: viper.GetString("address"),
-		}
-		if viper.GetBool("no-public-ip") {
-			pub := ""
-			netif.PublicIp = &pub
-		}
-
-		obj.Spec.NetworkInterfaces = append(obj.Spec.NetworkInterfaces, netif)
+		subnet = snet.Name
 	}
+	netif := ycv1alpha1.NetworkInterfaceSpec{
+		Subnet:    subnet,
+		PrivateIp: viper.GetString("address"),
+	}
+	if !viper.GetBool("no-public-ip") {
+		pub := ""
+		netif.PublicIp = &pub
+	}
+
+	obj.Spec.NetworkInterfaces = append(obj.Spec.NetworkInterfaces, netif)
 
 	scheme.Defaults(obj)
 

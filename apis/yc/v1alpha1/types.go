@@ -47,7 +47,7 @@ type ComputeInstanceSpec struct {
 	// +optional
 	UserData string `json:"userData,omitempty"`
 	// +optional
-	Resources ResourcesSpec `json:"resources,omitempty" mapstructure:"resources"`
+	Resources ResourcesSpec `json:"resources,omitempty"`
 	// +optional
 	Disk DiskSpec `json:"disk,omitempty" mapstructure:"disk"`
 	// +optional
